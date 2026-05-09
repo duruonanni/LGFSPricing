@@ -144,18 +144,18 @@ exports.handler = async (event) => {
     const openaiKey    = process.env.OPENAI_API_KEY     || '';
     const openaiBase   = process.env.OPENAI_BASE_URL    || '';
     const openaiModel  = process.env.OPENAI_MODEL       || '';
-    const deepseekKey  = process.env.DEEPSEEK_API_KEY   || '';
-    const deepseekBase = process.env.DEEPSEEK_BASE_URL  || '';
-    const deepseekModel= process.env.DEEPSEEK_MODEL     || '';
+    const geminiKey    = process.env.GEMINI_API_KEY     || '';
+    const geminiBase   = process.env.GEMINI_BASE_URL    || '';
+    const geminiModel  = process.env.GEMINI_MODEL       || '';
     const claudeKey    = process.env.ANTHROPIC_API_KEY  || '';
     const claudeBase   = process.env.ANTHROPIC_BASE_URL || '';
     const claudeModel  = process.env.ANTHROPIC_MODEL    || '';
     const claudeNative = claudeBase.includes('api.anthropic.com');
 
     const configs = [
-      { label: 'GPT-4o',   fn: () => callModel(prompt, openaiKey,   openaiBase,   openaiModel,    false) },
-      { label: 'DeepSeek', fn: () => callModel(prompt, deepseekKey, deepseekBase, deepseekModel,  false) },
-      { label: 'Claude',   fn: () => callModel(prompt, claudeKey,   claudeBase,   claudeModel,    claudeNative) },
+      { label: 'GPT-4o',  fn: () => callModel(prompt, openaiKey,  openaiBase,  openaiModel,  false) },
+      { label: 'Gemini',  fn: () => callModel(prompt, geminiKey,  geminiBase,  geminiModel,  false) },
+      { label: 'Claude',  fn: () => callModel(prompt, claudeKey,  claudeBase,  claudeModel,  claudeNative) },
     ];
 
     const settled = await Promise.allSettled(configs.map(c => c.fn()));
