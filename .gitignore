@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.DS_Store
+.claude/
+*.pdf
+*.png
+*.xlsx
+LGFS_Calculator_2026-03-05.html
