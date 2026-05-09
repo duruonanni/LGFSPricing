@@ -1027,145 +1027,6 @@ header h1 span{opacity:.7;font-weight:400;font-size:14px;margin-left:8px}
 
 <!-- ===== COUNTRIES & RATES ===== -->
 <div id="tab-countries" class="page">
-  <!-- ── AI Model Settings ── -->
-  <div class="card mb-3">
-    <div class="card-header">🔑 AI Model Settings <span style="font-weight:400;font-size:12px;opacity:.7">— required for Customer Intelligence lookup</span></div>
-    <div class="card-body">
-      <!-- Mode toggle -->
-      <div style="display:flex;gap:0;margin-bottom:16px;border:1.5px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content;flex-wrap:wrap">
-        <button id="api-mode-anthropic" onclick="setApiMode('anthropic')"
-          style="padding:7px 18px;font-size:13px;font-weight:600;border:none;cursor:pointer;transition:.15s">
-          Anthropic
-        </button>
-        <button id="api-mode-openai" onclick="setApiMode('openai')"
-          style="padding:7px 18px;font-size:13px;font-weight:600;border:none;cursor:pointer;transition:.15s;border-left:1.5px solid var(--border)">
-          OpenAI
-        </button>
-        <button id="api-mode-gemini" onclick="setApiMode('gemini')"
-          style="padding:7px 18px;font-size:13px;font-weight:600;border:none;cursor:pointer;transition:.15s;border-left:1.5px solid var(--border)">
-          Gemini
-        </button>
-        <button id="api-mode-proxy" onclick="setApiMode('proxy')"
-          style="padding:7px 18px;font-size:13px;font-weight:600;border:none;cursor:pointer;transition:.15s;border-left:1.5px solid var(--border)">
-          Custom Proxy
-        </button>
-      </div>
-
-      <!-- Anthropic mode -->
-      <div id="api-panel-anthropic">
-        <div class="field" style="margin:0;max-width:480px">
-          <label>Anthropic API Key</label>
-          <div style="display:flex;gap:6px">
-            <input type="password" id="anthropic-key-input" placeholder="sk-ant-api03-..."
-                   style="flex:1;font-family:monospace;font-size:13px"
-                   oninput="saveAnthropicSettings()">
-            <button class="btn btn-sm btn-secondary" onclick="toggleKeyVisibility()" id="key-toggle-btn" title="Show/hide">👁</button>
-          </div>
-        </div>
-        <div style="font-size:11.5px;color:var(--gray);margin-top:7px">
-          Get your key at <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--blue)">console.anthropic.com</a>. Saved locally in your browser only.
-        </div>
-      </div>
-
-      <!-- OpenAI mode -->
-      <div id="api-panel-openai" style="display:none">
-        <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;align-items:end;max-width:560px" class="ai-settings-grid-2">
-          <div class="field" style="margin:0">
-            <label>OpenAI API Key</label>
-            <div style="display:flex;gap:4px">
-              <input type="password" id="openai-key-input" placeholder="sk-..."
-                     style="flex:1;font-family:monospace;font-size:13px;min-width:0"
-                     oninput="saveAnthropicSettings()">
-              <button class="btn btn-sm btn-secondary" onclick="toggleOpenAIKeyVisibility()" id="openai-key-toggle-btn" title="Show/hide">👁</button>
-            </div>
-          </div>
-          <div class="field" style="margin:0">
-            <label>Model</label>
-            <input type="text" id="openai-model-input" placeholder="gpt-4o-mini"
-                   style="font-family:monospace;font-size:13px;width:100%"
-                   oninput="saveAnthropicSettings()">
-          </div>
-        </div>
-        <div style="font-size:11.5px;color:var(--gray);margin-top:7px">
-          Get your key at <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--blue)">platform.openai.com</a>. Common models: <code>gpt-4o-mini</code>, <code>gpt-4o</code>, <code>gpt-4-turbo</code>.
-        </div>
-      </div>
-
-      <!-- Gemini mode -->
-      <div id="api-panel-gemini" style="display:none">
-        <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;align-items:end;max-width:560px" class="ai-settings-grid-2">
-          <div class="field" style="margin:0">
-            <label>Google AI API Key</label>
-            <div style="display:flex;gap:4px">
-              <input type="password" id="gemini-key-input" placeholder="AIza..."
-                     style="flex:1;font-family:monospace;font-size:13px;min-width:0"
-                     oninput="saveAnthropicSettings()">
-              <button class="btn btn-sm btn-secondary" onclick="toggleGeminiKeyVisibility()" id="gemini-key-toggle-btn" title="Show/hide">👁</button>
-            </div>
-          </div>
-          <div class="field" style="margin:0">
-            <label>Model</label>
-            <input type="text" id="gemini-model-input" placeholder="gemini-2.0-flash"
-                   style="font-family:monospace;font-size:13px;width:100%"
-                   oninput="saveAnthropicSettings()">
-          </div>
-        </div>
-        <div style="font-size:11.5px;color:var(--gray);margin-top:7px">
-          Get your key at <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--blue)">aistudio.google.com</a>. Common models: <code>gemini-2.0-flash</code>, <code>gemini-1.5-pro</code>, <code>gemini-1.5-flash</code>.
-        </div>
-      </div>
-
-      <!-- Custom Proxy mode -->
-      <div id="api-panel-proxy" style="display:none">
-        <div style="display:grid;grid-template-columns:2fr 2fr 1fr;gap:10px;align-items:end" class="ai-settings-grid">
-          <div class="field" style="margin:0">
-            <label>Base URL</label>
-            <input type="text" id="anthropic-url-input" placeholder="https://your-proxy.com"
-                   style="font-family:monospace;font-size:12px;width:100%"
-                   oninput="saveAnthropicSettings()">
-          </div>
-          <div class="field" style="margin:0">
-            <label>API Key</label>
-            <div style="display:flex;gap:4px">
-              <input type="password" id="anthropic-proxy-key-input" placeholder="your-proxy-key"
-                     style="flex:1;font-family:monospace;font-size:12px;min-width:0"
-                     oninput="saveAnthropicSettings()">
-              <button class="btn btn-sm btn-secondary" onclick="toggleProxyKeyVisibility()" id="proxy-key-toggle-btn" title="Show/hide">👁</button>
-            </div>
-          </div>
-          <div class="field" style="margin:0">
-            <label>Model Name</label>
-            <input type="text" id="anthropic-model-input" placeholder="claude-3-5-haiku"
-                   style="font-family:monospace;font-size:12px;width:100%"
-                   oninput="saveAnthropicSettings()">
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
-          <label style="font-size:12px;font-weight:600;white-space:nowrap;margin:0">API Format:</label>
-          <select id="proxy-format-select" onchange="saveAnthropicSettings()"
-                  style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:#fff">
-            <option value="anthropic">Anthropic  (/v1/messages)</option>
-            <option value="openai">OpenAI  (/v1/chat/completions)</option>
-          </select>
-          <span style="font-size:11.5px;color:var(--gray)">Match the format your proxy expects</span>
-        </div>
-        <div style="font-size:11.5px;color:var(--gray);margin-top:6px">
-          Accepts full endpoint or base URL — auto-detected. Works with any Anthropic-compatible or OpenAI-compatible proxy.
-        </div>
-      </div>
-
-      <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
-        <span id="key-status" style="font-size:12px;flex:1"></span>
-        <button class="btn btn-sm" style="background:#fee2e2;color:#991b1b" onclick="clearAnthropicSettings()">✕ Clear</button>
-      </div>
-    </div>
-  </div>
-  <style>
-    #api-mode-anthropic,#api-mode-openai,#api-mode-gemini,#api-mode-proxy{background:#f8fafc;color:var(--gray)}
-    #api-mode-anthropic.active,#api-mode-openai.active,#api-mode-gemini.active,#api-mode-proxy.active{background:var(--blue);color:#fff}
-    @media(max-width:640px){.ai-settings-grid{grid-template-columns:1fr!important}.ai-settings-grid-2{grid-template-columns:1fr!important}}
-  </style>
-
   <div class="card">
     <div class="card-header justify-between">
       <span>🌐 Countries &amp; Bond Rates</span>
@@ -2910,7 +2771,6 @@ function init() {
   loadRepDetails();
   initGlobal();
   singleCalc();
-  initAnthropicKeyUI();
   initSupabaseAuth(); // initialize Supabase auth + restore session
 }
 
@@ -3034,155 +2894,26 @@ function loadRepDetails() {
 }
 
 // ============================================================
-// ANTHROPIC API KEY MANAGEMENT
+// CUSTOMER INTELLIGENCE LOOKUP  (multi-model)
 // ============================================================
-// ANTHROPIC API SETTINGS (direct key  OR  proxy URL+key+model)
-// ============================================================
-const ANTHROPIC_SETTINGS_KEY = 'lgfs_anthropic_settings';
 
-function loadAnthropicSettings() {
-  try {
-    const s = JSON.parse(localStorage.getItem(ANTHROPIC_SETTINGS_KEY) || '{}');
-    // Backward compat: old 'direct' mode → 'anthropic', old directKey → anthropicKey
-    if (s.mode === 'direct') { s.mode = 'anthropic'; }
-    if (s.directKey && !s.anthropicKey) { s.anthropicKey = s.directKey; }
-    return s;
-  } catch(e) { return {}; }
-}
-
-function setApiMode(mode) {
-  const s = loadAnthropicSettings();
-  s.mode = mode;
-  localStorage.setItem(ANTHROPIC_SETTINGS_KEY, JSON.stringify(s));
-  applyApiModeUI(mode);
-}
-
-function applyApiModeUI(mode) {
-  ['anthropic','openai','gemini','proxy'].forEach(m => {
-    const panel = document.getElementById(`api-panel-${m}`);
-    if (panel) panel.style.display = m === mode ? 'block' : 'none';
-    document.getElementById(`api-mode-${m}`)?.classList.toggle('active', m === mode);
-  });
-}
-
-function saveAnthropicSettings() {
-  const s = loadAnthropicSettings();
-  s.anthropicKey  = (document.getElementById('anthropic-key-input')?.value        || '').trim();
-  s.openaiKey     = (document.getElementById('openai-key-input')?.value           || '').trim();
-  s.openaiModel   = (document.getElementById('openai-model-input')?.value         || '').trim();
-  s.geminiKey     = (document.getElementById('gemini-key-input')?.value           || '').trim();
-  s.geminiModel   = (document.getElementById('gemini-model-input')?.value         || '').trim();
-  s.proxyKey      = (document.getElementById('anthropic-proxy-key-input')?.value  || '').trim();
-  s.proxyUrl      = (document.getElementById('anthropic-url-input')?.value        || '').trim();
-  s.proxyModel    = (document.getElementById('anthropic-model-input')?.value      || '').trim();
-  s.proxyFormat   = document.getElementById('proxy-format-select')?.value || 'anthropic';
-  localStorage.setItem(ANTHROPIC_SETTINGS_KEY, JSON.stringify(s));
-  updateKeyStatus();
-}
-
-function clearAnthropicSettings() {
-  localStorage.removeItem(ANTHROPIC_SETTINGS_KEY);
-  localStorage.removeItem('lgfs_anthropic_api_key');
-  ['anthropic-key-input','openai-key-input','openai-model-input',
-   'gemini-key-input','gemini-model-input',
-   'anthropic-proxy-key-input','anthropic-url-input','anthropic-model-input']
-    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  updateKeyStatus();
-}
-
-function updateKeyStatus() {
-  const s  = loadAnthropicSettings();
-  const el = document.getElementById('key-status');
-  if (!el) return;
-  const mode = s.mode || 'anthropic';
-  if (mode === 'openai') {
-    const ok = !!s.openaiKey;
-    el.textContent = ok ? `✓ OpenAI key saved  ·  model: ${s.openaiModel || 'gpt-4o-mini'}` : 'Enter your OpenAI API key above.';
-    el.style.color = ok ? 'var(--green)' : 'var(--gray)';
-  } else if (mode === 'gemini') {
-    const ok = !!s.geminiKey;
-    el.textContent = ok ? `✓ Gemini key saved  ·  model: ${s.geminiModel || 'gemini-2.0-flash'}` : 'Enter your Google AI API key above.';
-    el.style.color = ok ? 'var(--green)' : 'var(--gray)';
-  } else if (mode === 'proxy') {
-    const ok = s.proxyKey && s.proxyUrl;
-    el.textContent = ok
-      ? `✓ Proxy configured  ·  ${s.proxyUrl}  ·  model: ${s.proxyModel || '—'}  ·  format: ${s.proxyFormat || 'anthropic'}`
-      : 'Enter proxy URL and key above.';
-    el.style.color = ok ? 'var(--green)' : 'var(--gray)';
-  } else {
-    const key = s.anthropicKey || localStorage.getItem('lgfs_anthropic_api_key') || '';
-    el.textContent = key ? '✓ Anthropic key saved' : 'No key saved — enter above or set ANTHROPIC_API_KEY env var';
-    el.style.color = key ? 'var(--green)' : 'var(--gray)';
-  }
-}
-
-function toggleKeyVisibility() {
-  const inp = document.getElementById('anthropic-key-input');
-  const btn = document.getElementById('key-toggle-btn');
-  if (!inp) return;
-  if (inp.type === 'password') { inp.type = 'text';     btn.textContent = '🙈'; }
-  else                         { inp.type = 'password'; btn.textContent = '👁'; }
-}
-function toggleOpenAIKeyVisibility() {
-  const inp = document.getElementById('openai-key-input');
-  const btn = document.getElementById('openai-key-toggle-btn');
-  if (!inp) return;
-  if (inp.type === 'password') { inp.type = 'text';     btn.textContent = '🙈'; }
-  else                         { inp.type = 'password'; btn.textContent = '👁'; }
-}
-function toggleProxyKeyVisibility() {
-  const inp = document.getElementById('anthropic-proxy-key-input');
-  const btn = document.getElementById('proxy-key-toggle-btn');
-  if (!inp) return;
-  if (inp.type === 'password') { inp.type = 'text';     btn.textContent = '🙈'; }
-  else                         { inp.type = 'password'; btn.textContent = '👁'; }
-}
-function toggleGeminiKeyVisibility() {
-  const inp = document.getElementById('gemini-key-input');
-  const btn = document.getElementById('gemini-key-toggle-btn');
-  if (!inp) return;
-  if (inp.type === 'password') { inp.type = 'text';     btn.textContent = '🙈'; }
-  else                         { inp.type = 'password'; btn.textContent = '👁'; }
-}
-
-function initAnthropicKeyUI() {
-  const s = loadAnthropicSettings();
-  const mode = s.mode || 'anthropic';
-  const legacyKey = localStorage.getItem('lgfs_anthropic_api_key') || '';
-  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
-  set('anthropic-key-input',       s.anthropicKey || legacyKey);
-  set('openai-key-input',          s.openaiKey    || '');
-  set('openai-model-input',        s.openaiModel  || '');
-  set('gemini-key-input',          s.geminiKey    || '');
-  set('gemini-model-input',        s.geminiModel  || '');
-  set('anthropic-proxy-key-input', s.proxyKey     || '');
-  set('anthropic-url-input',       s.proxyUrl     || '');
-  set('anthropic-model-input',     s.proxyModel   || '');
-  const fmtEl = document.getElementById('proxy-format-select');
-  if (fmtEl) fmtEl.value = s.proxyFormat || 'anthropic';
-  applyApiModeUI(mode);
-  updateKeyStatus();
-}
-
-// ============================================================
-// CUSTOMER INTELLIGENCE LOOKUP
-// ============================================================
+// Detect whether we're running through the local Python server or on Netlify
+const CUSTOMER_INTEL_URL = IS_SERVER
+  ? '/api/customer-intel'
+  : '/.netlify/functions/customer-intel';
 
 let _lastIntel = null; // cache last result for "Apply" button
 
+// _allIntelResults[model] = data object (for tab switching)
+const _allIntelResults = {};
+let   _activeIntelTab  = null;
+const _allIntelResultsGlobal = {};
+let   _activeIntelTabGlobal  = null;
+
 async function lookupCustomer() {
-  if (!IS_SERVER) {
-    showIntelError('Customer Intelligence requires the local server.<br>Run <code>python3 server.py</code> and reload.');
-    return;
-  }
-
   const name = document.getElementById('s-customer').value.trim();
-  if (!name) {
-    document.getElementById('s-customer').focus();
-    return;
-  }
+  if (!name) { document.getElementById('s-customer').focus(); return; }
 
-  // Show card in loading state
   const card = document.getElementById('intel-card');
   const body = document.getElementById('intel-body');
   const btn  = document.getElementById('lookupBtn');
@@ -3193,56 +2924,23 @@ async function lookupCustomer() {
   body.innerHTML = `
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;color:var(--gray)">
       <span class="spinner"></span>
-      <span style="font-size:13px">Analysing <strong>${name}</strong>…</span>
+      <span style="font-size:13px">Analysing <strong>${name}</strong> with 3 AI models…</span>
     </div>`;
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>';
 
   try {
-    const s    = loadAnthropicSettings();
-    const mode = s.mode || 'anthropic';
-    const headers = {};
-    if (mode === 'openai') {
-      const key   = s.openaiKey || '';
-      const model = (s.openaiModel || '').trim() || 'gpt-4o-mini';
-      if (key)   headers['x-api-key']      = key;
-      headers['x-api-provider'] = 'openai';
-      headers['x-api-model']    = model;
-    } else if (mode === 'gemini') {
-      // Gemini via its OpenAI-compatible endpoint
-      const key   = s.geminiKey || '';
-      const model = (s.geminiModel || '').trim() || 'gemini-2.0-flash';
-      if (key)   headers['x-api-key']      = key;
-      headers['x-api-provider'] = 'openai';   // OpenAI-compatible format
-      headers['x-api-model']    = model;
-      headers['x-api-base-url'] = 'https://generativelanguage.googleapis.com/v1beta/openai';
-    } else if (mode === 'proxy') {
-      const key    = s.proxyKey   || '';
-      const url    = s.proxyUrl   || '';
-      const model  = s.proxyModel || '';
-      const format = s.proxyFormat || 'anthropic';
-      if (key)   headers['x-api-key']      = key;
-      if (url)   headers['x-api-base-url'] = url;
-      if (model) headers['x-api-model']    = model;
-      headers['x-api-provider'] = format;
+    const resp = await fetch(`${CUSTOMER_INTEL_URL}?name=${encodeURIComponent(name)}`,
+                             { signal: AbortSignal.timeout(50000) });
+    const payload = await resp.json();
+    if (payload.error) {
+      showIntelError(payload.error);
+    } else if (payload.responses) {
+      displayCustomerIntelMulti(payload.responses, 'single');
     } else {
-      // anthropic (default)
-      const key = s.anthropicKey || localStorage.getItem('lgfs_anthropic_api_key') || '';
-      if (key)   headers['x-api-key']      = key;
-      headers['x-api-provider'] = 'anthropic';
-    }
-    const resp = await fetch(`/api/customer-intel?name=${encodeURIComponent(name)}`,
-                             {signal: AbortSignal.timeout(40000), headers});
-    const data = await resp.json();
-
-    if (data.error) {
-      const hint = data.hint
-        ? `${data.hint}<br><span style="font-size:11px">→ Go to <strong>Countries &amp; Rates</strong> tab → 🔑 AI Model Settings.</span>`
-        : `<span style="font-size:11px">Go to <strong>Countries &amp; Rates</strong> tab → 🔑 AI Model Settings to configure your API key.</span>`;
-      showIntelError(data.error + `<br>${hint}`);
-    } else {
-      _lastIntel = data;
-      displayCustomerIntel(data);
+      // Legacy single-model fallback
+      _lastIntel = payload;
+      displayCustomerIntel(payload);
     }
   } catch (err) {
     showIntelError('Lookup failed: ' + err.message);
@@ -3271,194 +2969,26 @@ function gcrChipClass(gcr) {
   return 'gcr-vhigh';
 }
 
-function displayCustomerIntel(d) {
-  const card = document.getElementById('intel-card');
-  const body = document.getElementById('intel-body');
-  const conf = document.getElementById('intel-confidence');
-
-  card.style.display = 'block';
-
-  // Confidence badge
-  const confClass = {high:'conf-high', medium:'conf-medium', low:'conf-low'}[d.data_confidence] || 'conf-medium';
-  const confLabel  = {high:'High confidence', medium:'Medium confidence', low:'Low confidence'}[d.data_confidence] || 'Unverified';
-  conf.className   = `conf-badge ${confClass}`;
-  conf.textContent = confLabel;
-  conf.style.display = 'inline-block';
-
-  // GCR chip colour
-  const chipCls = gcrChipClass(d.gcr_recommendation);
-
-  // Credit outlook pill
-  const creditColors = {
-    strong:   {bg:'#d1fae5', color:'#065f46'},
-    good:     {bg:'#dbeafe', color:'#1e40af'},
-    moderate: {bg:'#fef3c7', color:'#92400e'},
-    weak:     {bg:'#fee2e2', color:'#991b1b'},
-    unknown:  {bg:'#f3f4f6', color:'#6b7280'},
-  };
-  const cc = creditColors[d.credit_outlook] || creditColors.unknown;
-  const creditPill = `<span style="background:${cc.bg};color:${cc.color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;text-transform:capitalize">${d.credit_outlook || 'unknown'}</span>`;
-
-  // Public/private badge
-  const ppColor = {public:'#dbeafe', private:'#f3e8ff', government:'#d1fae5', unknown:'#f3f4f6'}[d.public_private] || '#f3f4f6';
-  const ppText  = d.public_private ? d.public_private.charAt(0).toUpperCase() + d.public_private.slice(1) : '–';
-
-  body.innerHTML = `
-    <div class="intel-section">Company Overview</div>
-    <div class="intel-grid">
-      <div class="intel-item">
-        <div class="ilabel">Company</div>
-        <div class="ivalue">${d.company_name || '–'}</div>
-      </div>
-      <div class="intel-item">
-        <div class="ilabel">Headquarters</div>
-        <div class="ivalue">${d.headquarters || '–'}</div>
-      </div>
-      <div class="intel-item">
-        <div class="ilabel">Industry</div>
-        <div class="ivalue">${d.industry || '–'}</div>
-      </div>
-      <div class="intel-item">
-        <div class="ilabel">Type</div>
-        <div class="ivalue"><span style="background:${ppColor};padding:2px 8px;border-radius:8px;font-size:12px">${ppText}</span></div>
-      </div>
-      <div class="intel-item">
-        <div class="ilabel">Est. Revenue</div>
-        <div class="ivalue">${d.revenue_estimate || '–'}</div>
-      </div>
-      <div class="intel-item">
-        <div class="ilabel">Est. Employees</div>
-        <div class="ivalue">${d.employees_estimate || '–'}</div>
-      </div>
-    </div>
-
-    <div class="intel-section">Pricing Recommendation</div>
-    <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:10px">
-      <div style="text-align:center;flex-shrink:0">
-        <div class="gcr-chip ${chipCls}" style="margin:0 auto 4px">${d.gcr_recommendation}</div>
-        <div style="font-size:10px;color:var(--gray);font-weight:700">GCR</div>
-      </div>
-      <div style="flex:1">
-        <div class="intel-grid" style="margin-bottom:0">
-          <div class="intel-item">
-            <div class="ilabel">Credit Outlook</div>
-            <div class="ivalue">${creditPill}</div>
-          </div>
-          <div class="intel-item">
-            <div class="ilabel">Industry Risk</div>
-            <div class="ivalue" style="text-transform:capitalize">${d.industry_risk || '–'}</div>
-          </div>
-          <div class="intel-item">
-            <div class="ilabel">Suggested Term</div>
-            <div class="ivalue">${d.suggested_term ? d.suggested_term + ' months' : '–'}</div>
-          </div>
-          <div class="intel-item">
-            <div class="ilabel">Est. Deal Size</div>
-            <div class="ivalue">${d.deal_size_recommendation || '–'} / yr</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    ${d.gcr_rationale ? `<div class="intel-rationale">💬 ${d.gcr_rationale}</div>` : ''}
-    ${d.pricing_notes ? `<div class="intel-note">📌 ${d.pricing_notes}</div>` : ''}
-
-    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-primary btn-sm" onclick="applyPricingRecommendation()">
-        ✓ Apply Recommendations
-      </button>
-      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('intel-card').style.display='none'">
-        Dismiss
-      </button>
-    </div>
-    <div style="margin-top:10px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;line-height:1.5">
-      ⚠️ For reference only. Data is based on the model's training knowledge and may not reflect current financial status. Independent verification is recommended before making credit decisions.
+// ── Shared helper: render one model's intel data ────────────────
+function renderIntelContent(d, applyFn, dismissFn) {
+  if (!d || d.error) {
+    return `<div style="display:flex;align-items:flex-start;gap:8px;padding:4px 0;color:var(--red)">
+      <span style="font-size:16px">⚠</span>
+      <span style="font-size:12px">${(d && d.error) || 'No data'}</span>
     </div>`;
-}
-
-let _lastIntelGlobal = null;
-
-async function lookupCustomerGlobal() {
-  if (!IS_SERVER) {
-    document.getElementById('g-intel-body').innerHTML =
-      '<div style="color:var(--red);font-size:12px">⚠ Customer Intelligence requires the local server. Run <code>python3 server.py</code> and reload.</div>';
-    document.getElementById('g-intel-card').style.display = 'block';
-    return;
   }
-  const name = document.getElementById('g-customer').value.trim();
-  if (!name) { document.getElementById('g-customer').focus(); return; }
-
-  const card = document.getElementById('g-intel-card');
-  const body = document.getElementById('g-intel-body');
-  card.style.display = 'block';
-  document.getElementById('g-intel-confidence').style.display = 'none';
-  body.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:4px 0">
-    <span class="spinner"></span>
-    <span style="font-size:13px">Analysing <strong>${name}</strong>…</span>
-  </div>`;
-  const btn = document.getElementById('gLookupBtn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>';
-
-  try {
-    const s = loadAnthropicSettings();
-    const mode = s.mode || 'anthropic';
-    const headers = {};
-    if (mode === 'openai') {
-      if (s.openaiKey) headers['x-api-key'] = s.openaiKey;
-      headers['x-api-provider'] = 'openai';
-      headers['x-api-model'] = (s.openaiModel || '').trim() || 'gpt-4o-mini';
-    } else if (mode === 'proxy') {
-      if (s.proxyKey)   headers['x-api-key']      = s.proxyKey;
-      if (s.proxyUrl)   headers['x-api-base-url']  = s.proxyUrl;
-      if (s.proxyModel) headers['x-api-model']     = s.proxyModel;
-      headers['x-api-provider'] = s.proxyFormat || 'anthropic';
-    } else {
-      const key = s.anthropicKey || localStorage.getItem('lgfs_anthropic_api_key') || '';
-      if (key) headers['x-api-key'] = key;
-      headers['x-api-provider'] = 'anthropic';
-    }
-    const resp = await fetch(`/api/customer-intel?name=${encodeURIComponent(name)}`,
-                             {signal: AbortSignal.timeout(40000), headers});
-    const data = await resp.json();
-    if (data.error) {
-      const hint = data.hint
-        ? `${data.hint}<br><span style="font-size:11px">→ Go to <strong>Countries &amp; Rates</strong> tab → 🔑 AI Model Settings.</span>`
-        : `<span style="font-size:11px">Go to <strong>Countries &amp; Rates</strong> tab → 🔑 AI Model Settings to configure your API key.</span>`;
-      body.innerHTML = `<div style="color:var(--red);font-size:12px">⚠ ${data.error}<br>${hint}</div>`;
-    } else {
-      _lastIntelGlobal = data;
-      displayCustomerIntelGlobal(data);
-    }
-  } catch(err) {
-    body.innerHTML = `<div style="color:var(--red);font-size:12px">⚠ Lookup failed: ${err.message}</div>`;
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '🔍 Lookup';
-  }
-}
-
-function displayCustomerIntelGlobal(d) {
-  const card = document.getElementById('g-intel-card');
-  const body = document.getElementById('g-intel-body');
-  const conf = document.getElementById('g-intel-confidence');
-  card.style.display = 'block';
-
-  const confClass = {high:'conf-high', medium:'conf-medium', low:'conf-low'}[d.data_confidence] || 'conf-medium';
-  const confLabel = {high:'High confidence', medium:'Medium confidence', low:'Low confidence'}[d.data_confidence] || 'Unverified';
-  conf.className = `conf-badge ${confClass}`;
-  conf.textContent = confLabel;
-  conf.style.display = 'inline-block';
-
   const chipCls = gcrChipClass(d.gcr_recommendation);
   const creditColors = {strong:{bg:'#d1fae5',color:'#065f46'},good:{bg:'#dbeafe',color:'#1e40af'},moderate:{bg:'#fef3c7',color:'#92400e'},weak:{bg:'#fee2e2',color:'#991b1b'},unknown:{bg:'#f3f4f6',color:'#6b7280'}};
   const cc = creditColors[d.credit_outlook] || creditColors.unknown;
   const creditPill = `<span style="background:${cc.bg};color:${cc.color};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;text-transform:capitalize">${d.credit_outlook||'unknown'}</span>`;
   const ppColor = {public:'#dbeafe',private:'#f3e8ff',government:'#d1fae5',unknown:'#f3f4f6'}[d.public_private]||'#f3f4f6';
   const ppText = d.public_private ? d.public_private.charAt(0).toUpperCase()+d.public_private.slice(1) : '–';
-
-  body.innerHTML = `
-    <div class="intel-section">Company Overview</div>
+  const confClass = {high:'conf-high',medium:'conf-medium',low:'conf-low'}[d.data_confidence]||'conf-medium';
+  const confLabel = {high:'High confidence',medium:'Medium confidence',low:'Low confidence'}[d.data_confidence]||'Unverified';
+  return `
+    <div class="intel-section">Company Overview
+      <span class="conf-badge ${confClass}" style="margin-left:8px">${confLabel}</span>
+    </div>
     <div class="intel-grid">
       <div class="intel-item"><div class="ilabel">Company</div><div class="ivalue">${d.company_name||'–'}</div></div>
       <div class="intel-item"><div class="ilabel">Headquarters</div><div class="ivalue">${d.headquarters||'–'}</div></div>
@@ -3485,17 +3015,135 @@ function displayCustomerIntelGlobal(d) {
     ${d.gcr_rationale?`<div class="intel-rationale">💬 ${d.gcr_rationale}</div>`:''}
     ${d.pricing_notes?`<div class="intel-note">📌 ${d.pricing_notes}</div>`:''}
     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-primary btn-sm" onclick="applyPricingRecommendationGlobal()">✓ Apply Recommendations</button>
-      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('g-intel-card').style.display='none'">Dismiss</button>
+      <button class="btn btn-primary btn-sm" onclick="${applyFn}()">✓ Apply Recommendations</button>
+      <button class="btn btn-secondary btn-sm" onclick="${dismissFn}">Dismiss</button>
     </div>
     <div style="margin-top:10px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;line-height:1.5">
       ⚠️ For reference only. Data is based on the model's training knowledge and may not reflect current financial status. Independent verification is recommended before making credit decisions.
     </div>`;
 }
 
+// ── Multi-model tabbed display ───────────────────────────────────
+function displayCustomerIntelMulti(responses, ctx) {
+  const isGlobal = ctx === 'global';
+  const bodyId   = isGlobal ? 'g-intel-body' : 'intel-body';
+  const cardId   = isGlobal ? 'g-intel-card' : 'intel-card';
+  const confId   = isGlobal ? 'g-intel-confidence' : 'intel-confidence';
+  const store    = isGlobal ? _allIntelResultsGlobal : _allIntelResults;
+  const applyFn  = isGlobal ? 'applyPricingRecommendationGlobal' : 'applyPricingRecommendation';
+  const dismissS = `document.getElementById('${cardId}').style.display='none'`;
+
+  // Store all results; pick first successful as default tab
+  responses.forEach(r => { store[r.model] = r.data; });
+  const firstOk = responses.find(r => !r.data.error);
+  const defModel = firstOk ? firstOk.model : (responses[0]?.model || 'GPT-4o');
+
+  if (isGlobal) { _activeIntelTabGlobal = defModel; _lastIntelGlobal = store[defModel]; }
+  else          { _activeIntelTab = defModel;        _lastIntel       = store[defModel]; }
+
+  document.getElementById(confId).style.display = 'none';
+  document.getElementById(cardId).style.display = 'block';
+
+  const MODEL_ICONS = {'GPT-4o':'🤖','Gemini':'✨','Claude':'🔵'};
+
+  // Build tab bar
+  const tabBar = responses.map(r => {
+    const hasErr = !!r.data.error;
+    const isActive = r.model === defModel;
+    return `<button
+      id="itab-${ctx}-${r.model.replace(/[^a-z0-9]/gi,'_')}"
+      onclick="switchIntelTab('${ctx}','${r.model}')"
+      style="padding:6px 14px;font-size:12px;font-weight:600;border:none;cursor:pointer;
+             transition:.15s;border-bottom:3px solid ${isActive?'var(--blue)':'transparent'};
+             background:${isActive?'#eff6ff':'#f8fafc'};color:${isActive?'var(--blue)':hasErr?'var(--red)':'var(--gray)'}">
+      ${MODEL_ICONS[r.model]||'🔹'} ${r.model}${hasErr?' ⚠':''}
+    </button>`;
+  }).join('');
+
+  const body = document.getElementById(bodyId);
+  body.innerHTML = `
+    <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin:-12px -12px 12px;padding:0 4px;flex-wrap:wrap">
+      ${tabBar}
+    </div>
+    <div id="intel-tab-content-${ctx}">
+      ${renderIntelContent(store[defModel], applyFn, dismissS)}
+    </div>`;
+}
+
+function switchIntelTab(ctx, model) {
+  const store   = ctx === 'global' ? _allIntelResultsGlobal : _allIntelResults;
+  const applyFn = ctx === 'global' ? 'applyPricingRecommendationGlobal' : 'applyPricingRecommendation';
+  const cardId  = ctx === 'global' ? 'g-intel-card' : 'intel-card';
+  const dismissS = `document.getElementById('${cardId}').style.display='none'`;
+
+  if (ctx === 'global') { _activeIntelTabGlobal = model; _lastIntelGlobal = store[model]; }
+  else                  { _activeIntelTab = model;        _lastIntel       = store[model]; }
+
+  // Update tab button styles
+  Object.keys(store).forEach(m => {
+    const btn = document.getElementById(`itab-${ctx}-${m.replace(/[^a-z0-9]/gi,'_')}`);
+    if (!btn) return;
+    const isActive = m === model;
+    btn.style.borderBottom = isActive ? '3px solid var(--blue)' : '3px solid transparent';
+    btn.style.background   = isActive ? '#eff6ff' : '#f8fafc';
+    btn.style.color        = isActive ? 'var(--blue)' : (store[m]?.error ? 'var(--red)' : 'var(--gray)');
+  });
+
+  const content = document.getElementById(`intel-tab-content-${ctx}`);
+  if (content) content.innerHTML = renderIntelContent(store[model], applyFn, dismissS);
+}
+
+// ── Single-model fallback (legacy) ──────────────────────────────
+function displayCustomerIntel(d) {
+  document.getElementById('intel-card').style.display = 'block';
+  document.getElementById('intel-confidence').style.display = 'none';
+  document.getElementById('intel-body').innerHTML =
+    renderIntelContent(d, 'applyPricingRecommendation',
+      "document.getElementById('intel-card').style.display='none'");
+}
+
+let _lastIntelGlobal = null;
+
+async function lookupCustomerGlobal() {
+  const name = document.getElementById('g-customer').value.trim();
+  if (!name) { document.getElementById('g-customer').focus(); return; }
+
+  const card = document.getElementById('g-intel-card');
+  const body = document.getElementById('g-intel-body');
+  card.style.display = 'block';
+  document.getElementById('g-intel-confidence').style.display = 'none';
+  body.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:4px 0">
+    <span class="spinner"></span>
+    <span style="font-size:13px">Analysing <strong>${name}</strong> with 3 AI models…</span>
+  </div>`;
+  const btn = document.getElementById('gLookupBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+
+  try {
+    const resp = await fetch(`${CUSTOMER_INTEL_URL}?name=${encodeURIComponent(name)}`,
+                             { signal: AbortSignal.timeout(50000) });
+    const payload = await resp.json();
+    if (payload.error) {
+      body.innerHTML = `<div style="color:var(--red);font-size:12px">⚠ ${payload.error}</div>`;
+    } else if (payload.responses) {
+      displayCustomerIntelMulti(payload.responses, 'global');
+    } else {
+      _lastIntelGlobal = payload;
+      body.innerHTML = renderIntelContent(payload, 'applyPricingRecommendationGlobal',
+        "document.getElementById('g-intel-card').style.display='none'");
+    }
+  } catch(err) {
+    body.innerHTML = `<div style="color:var(--red);font-size:12px">⚠ Lookup failed: ${err.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🔍 Lookup';
+  }
+}
+
 function applyPricingRecommendationGlobal() {
   const d = _lastIntelGlobal;
-  if (!d) return;
+  if (!d || d.error) return;
   if (d.suggested_term && [12,24,36,48,60].includes(d.suggested_term)) {
     document.getElementById('g-term').value = String(d.suggested_term);
   }
@@ -3510,37 +3158,20 @@ function applyPricingRecommendationGlobal() {
 
 function applyPricingRecommendation() {
   const d = _lastIntel;
-  if (!d) return;
-
-  // Apply GCR
-  if (d.gcr_recommendation && d.gcr_recommendation >= 1 && d.gcr_recommendation <= 7) {
+  if (!d || d.error) return;
+  if (d.gcr_recommendation >= 1 && d.gcr_recommendation <= 7)
     document.getElementById('s-gcr').value = String(d.gcr_recommendation);
-  }
-
-  // Apply suggested term
-  const termSel = document.getElementById('s-term');
-  if (d.suggested_term && [12,24,36,48,60].includes(d.suggested_term)) {
-    termSel.value = String(d.suggested_term);
-  }
-
-  // Apply deal size
-  const volSel = document.getElementById('s-annualVol');
+  if (d.suggested_term && [12,24,36,48,60].includes(d.suggested_term))
+    document.getElementById('s-term').value = String(d.suggested_term);
   const validVols = ['0-100k','100k-1M','1M-2M','2M-5M','5M-10M','10M-30M','30M+'];
-  if (d.deal_size_recommendation && validVols.includes(d.deal_size_recommendation)) {
-    volSel.value = d.deal_size_recommendation;
-  }
-
+  if (d.deal_size_recommendation && validVols.includes(d.deal_size_recommendation))
+    document.getElementById('s-annualVol').value = d.deal_size_recommendation;
   singleCalc();
-
-  // Visual confirmation on the button
   const btn = document.querySelector('#intel-body .btn-primary');
   if (btn) {
     btn.textContent = '✓ Applied!';
     btn.style.background = 'var(--green)';
-    setTimeout(() => {
-      btn.innerHTML = '✓ Apply Recommendations';
-      btn.style.background = '';
-    }, 2000);
+    setTimeout(() => { btn.innerHTML = '✓ Apply Recommendations'; btn.style.background = ''; }, 2000);
   }
 }
 

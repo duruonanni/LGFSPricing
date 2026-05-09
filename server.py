@@ -688,24 +688,56 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not name:
             self._json({'error': 'Missing ?name= parameter'})
             return
-        # Settings: prefer headers from browser UI, fall back to env vars / defaults
-        api_key_override  = self.headers.get('x-api-key',      '').strip() or None
-        base_url_override = self.headers.get('x-api-base-url', '').strip() or None
-        model_override    = self.headers.get('x-api-model',    '').strip() or None
-        provider_override = self.headers.get('x-api-provider', '').strip() or None
-        print(f'\n🔍  Customer intel lookup: "{name}"  provider: {provider_override or "default"}')
-        result = fetch_customer_intel(name,
-                                      api_key_override=api_key_override,
-                                      base_url_override=base_url_override,
-                                      model_override=model_override,
-                                      provider_override=provider_override)
-        if 'error' in result:
-            print(f'  ⚠  {result["error"]}')
-        else:
-            print(f'  ✓  GCR={result.get("gcr_recommendation")}  '
-                  f'{result.get("industry")}  {result.get("company_size")}  '
-                  f'confidence={result.get("data_confidence")}')
-        self._json(result)
+
+        configs = [
+            {
+                'label':    'GPT-4o',
+                'api_key':  os.environ.get('OPENAI_API_KEY', ''),
+                'base_url': os.environ.get('OPENAI_BASE_URL', 'https://api.openai.com'),
+                'model':    os.environ.get('OPENAI_MODEL', 'gpt-4o'),
+                'provider': 'openai',
+            },
+            {
+                'label':    'Gemini',
+                'api_key':  os.environ.get('GEMINI_API_KEY', ''),
+                'base_url': os.environ.get('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta/openai'),
+                'model':    os.environ.get('GEMINI_MODEL', 'gemini-2.0-flash'),
+                'provider': 'openai',
+            },
+            {
+                'label':    'Claude',
+                'api_key':  os.environ.get('ANTHROPIC_API_KEY', ''),
+                'base_url': os.environ.get('ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
+                'model':    os.environ.get('ANTHROPIC_MODEL', 'claude-sonnet-4-6'),
+                'provider': 'anthropic',
+            },
+        ]
+
+        print(f'\n🔍  Customer intel: "{name}" — querying {len(configs)} models in parallel')
+
+        def call(cfg):
+            return fetch_customer_intel(
+                name,
+                api_key_override=cfg['api_key'] or None,
+                base_url_override=cfg['base_url'],
+                model_override=cfg['model'],
+                provider_override=cfg['provider'],
+            )
+
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures = [pool.submit(call, cfg) for cfg in configs]
+            results = [f.result() for f in futures]
+
+        responses = [{'model': configs[i]['label'], 'data': results[i]} for i in range(len(configs))]
+        for r in responses:
+            d = r['data']
+            if 'error' in d:
+                print(f'  ⚠  {r["model"]}: {d["error"]}')
+            else:
+                print(f'  ✓  {r["model"]}: GCR={d.get("gcr_recommendation")} '
+                      f'{d.get("company_size")} confidence={d.get("data_confidence")}')
+
+        self._json({'responses': responses})
 
     def _serve_parse_quote(self):
         """
