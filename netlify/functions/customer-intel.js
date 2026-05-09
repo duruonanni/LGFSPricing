@@ -1,11 +1,24 @@
 /**
  * Netlify Function: customer-intel
- * Calls all 3 AI models in parallel and returns combined results.
- * Env vars required:
+ * Calls GPT-4o, DeepSeek, and Claude in parallel.
+ * Required env vars:
  *   OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
- *   GEMINI_API_KEY, GEMINI_BASE_URL, GEMINI_MODEL
+ *   DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
  *   ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, ANTHROPIC_MODEL
  */
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+function jsonResponse(body, statusCode) {
+  return {
+    statusCode: statusCode || 200,
+    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+    body: JSON.stringify(body),
+  };
+}
 
 function buildPrompt(name) {
   return `You are a financial analyst helping assess lease financing risk for a B2B equipment leasing company (Lenovo Global Financial Services).
@@ -29,158 +42,119 @@ Analyse the company "${name}" and return ONLY a JSON object with these exact fie
   "data_confidence": "high or medium or low"
 }
 
-data_confidence criteria:
-  "high"   = publicly listed company or government body with verifiable financials and well-known profile
-  "medium" = known private company or regional firm with partial public information
-  "low"    = unfamiliar name, likely startup, ambiguous/conflicting information, or name could match multiple entities
-
-GCR (Global Credit Rating) key:
-1–4 = Low-to-medium risk, zero credit uplift → large listed enterprises, investment-grade rated, government bodies
-5   = Medium risk, +1% credit uplift → DEFAULT for mid-market / unrated companies
-6   = Elevated risk, +2% credit uplift → smaller private companies, weaker financials, cyclical/volatile sectors
-7   = HIGH risk, +8% credit uplift → startups, distressed entities, very high-risk industries
-
-deal_size_recommendation = estimated typical annual IT equipment finance volume for this type of customer.
-suggested_term = most common lease term in months (24, 36, 48, or 60).
+GCR key: 1-4=low risk, 5=medium(default), 6=elevated, 7=high risk.
 Return ONLY the JSON object, nothing else.`;
 }
 
 function parseJSON(text) {
-  const clean = text.replace(/^```[a-z]*\n?/m, '').replace(/\n?```$/m, '').trim();
+  const clean = text.replace(/^```[\w]*\n?/m, '').replace(/\n?```$/m, '').trim();
   return JSON.parse(clean);
 }
 
-async function callOpenAIFormat(prompt, apiKey, baseUrl, model) {
-  if (!apiKey) throw new Error('API key not configured');
-  const base = (baseUrl || '').replace(/\/$/, '');
-  // Build endpoint: if already ends with /v1/chat/completions use as-is,
-  // else append /v1/chat/completions
-  let url;
-  if (base.endsWith('/v1/chat/completions')) {
-    url = base;
-  } else if (base.endsWith('/v1')) {
-    url = base + '/chat/completions';
-  } else {
-    url = base + '/v1/chat/completions';
+function buildEndpoint(base, isAnthropic) {
+  if (!base) throw new Error('Base URL not configured');
+  const b = base.replace(/\/$/, '');
+  if (isAnthropic) {
+    return b.endsWith('/v1/messages') ? b : b + '/v1/messages';
   }
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-    signal: AbortSignal.timeout(35000),
-  });
-
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-  const text = data.choices?.[0]?.message?.content?.trim();
-  if (!text) throw new Error(`Empty response (HTTP ${res.status})`);
-  return parseJSON(text);
+  if (b.endsWith('/v1/chat/completions')) return b;
+  if (b.endsWith('/v1')) return b + '/chat/completions';
+  return b + '/v1/chat/completions';
 }
 
-async function callAnthropicNative(prompt, apiKey, baseUrl, model) {
+async function callModel(prompt, apiKey, baseUrl, model, useAnthropicFormat) {
   if (!apiKey) throw new Error('API key not configured');
-  const base = (baseUrl || 'https://api.anthropic.com').replace(/\/$/, '');
-  const url = base.endsWith('/v1/messages') ? base : base + '/v1/messages';
+  if (!baseUrl) throw new Error('Base URL not configured');
+  if (!model) throw new Error('Model name not configured');
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
+  const endpoint = buildEndpoint(baseUrl, useAnthropicFormat);
+
+  let headers, body;
+  if (useAnthropicFormat) {
+    headers = {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-    signal: AbortSignal.timeout(35000),
-  });
+      'content-type': 'application/json',
+    };
+    body = JSON.stringify({ model, max_tokens: 1024, messages: [{ role: 'user', content: prompt }] });
+  } else {
+    headers = {
+      'authorization': `Bearer ${apiKey}`,
+      'content-type': 'application/json',
+    };
+    body = JSON.stringify({ model, max_tokens: 1024, messages: [{ role: 'user', content: prompt }] });
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 28000);
+
+  let res;
+  try {
+    res = await fetch(endpoint, { method: 'POST', headers, body, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 
   const data = await res.json();
-  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-  const text = data.content?.[0]?.text?.trim();
-  if (!text) throw new Error(`Empty response (HTTP ${res.status})`);
+
+  if (data.error) {
+    const msg = typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error));
+    throw new Error(msg);
+  }
+
+  // Extract text: OpenAI format or Anthropic format
+  const text = useAnthropicFormat
+    ? data.content?.[0]?.text?.trim()
+    : data.choices?.[0]?.message?.content?.trim();
+
+  if (!text) throw new Error(`Empty response from API (HTTP ${res.status})`);
   return parseJSON(text);
 }
 
 exports.handler = async (event) => {
-  // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
-      body: '',
-    };
+    return { statusCode: 200, headers: CORS_HEADERS, body: '' };
   }
 
-  const params = new URLSearchParams(event.rawQuery || event.queryStringParameters ? new URLSearchParams(event.queryStringParameters).toString() : '');
-  const name = (event.queryStringParameters?.name || '').trim();
-  if (!name) {
-    return {
-      statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Missing ?name= parameter' }),
-    };
+  try {
+    const name = ((event.queryStringParameters || {}).name || '').trim();
+    if (!name) return jsonResponse({ error: 'Missing ?name= parameter' }, 400);
+
+    const prompt = buildPrompt(name);
+
+    const openaiKey    = process.env.OPENAI_API_KEY     || '';
+    const openaiBase   = process.env.OPENAI_BASE_URL    || '';
+    const openaiModel  = process.env.OPENAI_MODEL       || '';
+
+    const deepseekKey  = process.env.DEEPSEEK_API_KEY   || '';
+    const deepseekBase = process.env.DEEPSEEK_BASE_URL  || '';
+    const deepseekModel= process.env.DEEPSEEK_MODEL     || '';
+
+    const claudeKey    = process.env.ANTHROPIC_API_KEY  || '';
+    const claudeBase   = process.env.ANTHROPIC_BASE_URL || '';
+    const claudeModel  = process.env.ANTHROPIC_MODEL    || '';
+
+    // Use native Anthropic format only if pointing at api.anthropic.com
+    const claudeNative = claudeBase.includes('api.anthropic.com');
+
+    const configs = [
+      { label: 'GPT-4o',   fn: () => callModel(prompt, openaiKey,   openaiBase,   openaiModel,   false) },
+      { label: 'DeepSeek', fn: () => callModel(prompt, deepseekKey, deepseekBase, deepseekModel, false) },
+      { label: 'Claude',   fn: () => callModel(prompt, claudeKey,   claudeBase,   claudeModel,   claudeNative) },
+    ];
+
+    const settled = await Promise.allSettled(configs.map(c => c.fn()));
+    const responses = settled.map((r, i) => ({
+      model: configs[i].label,
+      data: r.status === 'fulfilled'
+        ? r.value
+        : { error: String(r.reason?.message || r.reason || 'Unknown error') },
+    }));
+
+    return jsonResponse({ responses });
+
+  } catch (err) {
+    // Always return valid JSON even on unexpected errors
+    return jsonResponse({ error: String(err.message || err) }, 500);
   }
-
-  const prompt = buildPrompt(name);
-
-  // All values come strictly from environment variables — no hardcoded fallbacks
-  const openaiKey     = process.env.OPENAI_API_KEY     || '';
-  const openaiBase    = process.env.OPENAI_BASE_URL    || '';
-  const openaiModel   = process.env.OPENAI_MODEL       || '';
-  const deepseekKey   = process.env.DEEPSEEK_API_KEY   || '';
-  const deepseekBase  = process.env.DEEPSEEK_BASE_URL  || '';
-  const deepseekModel = process.env.DEEPSEEK_MODEL     || '';
-  const claudeKey     = process.env.ANTHROPIC_API_KEY  || '';
-  const claudeBase    = process.env.ANTHROPIC_BASE_URL || '';
-  const claudeModel   = process.env.ANTHROPIC_MODEL    || '';
-
-  const anthropicIsNative = claudeBase.includes('api.anthropic.com');
-
-  const configs = [
-    {
-      label: 'GPT-4o',
-      fn: () => callOpenAIFormat(prompt, openaiKey, openaiBase, openaiModel),
-    },
-    {
-      label: 'DeepSeek',
-      fn: () => callOpenAIFormat(prompt, deepseekKey, deepseekBase, deepseekModel),
-    },
-    {
-      label: 'Claude',
-      fn: () => anthropicIsNative
-        ? callAnthropicNative(prompt, claudeKey, claudeBase, claudeModel)
-        : callOpenAIFormat(prompt, claudeKey, claudeBase, claudeModel),
-    },
-  ];
-
-  const settled = await Promise.allSettled(configs.map(c => c.fn()));
-  const responses = settled.map((r, i) => ({
-    model: configs[i].label,
-    data: r.status === 'fulfilled'
-      ? r.value
-      : { error: String(r.reason?.message || r.reason || 'Unknown error') },
-  }));
-
-  return {
-    statusCode: 200,
-    headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-    },
-    body: JSON.stringify({ responses }),
-  };
 };
