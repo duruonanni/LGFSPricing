@@ -137,44 +137,33 @@ exports.handler = async (event) => {
 
   const prompt = buildPrompt(name);
 
-  // Determine if Anthropic is going through a proxy (use OpenAI format) or native
-  const anthropicBase = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
-  const anthropicIsNative = anthropicBase.includes('api.anthropic.com');
+  // All values come strictly from environment variables — no hardcoded fallbacks
+  const openaiKey    = process.env.OPENAI_API_KEY     || '';
+  const openaiBase   = process.env.OPENAI_BASE_URL    || '';
+  const openaiModel  = process.env.OPENAI_MODEL       || '';
+  const geminiKey    = process.env.GEMINI_API_KEY     || '';
+  const geminiBase   = process.env.GEMINI_BASE_URL    || '';
+  const geminiModel  = process.env.GEMINI_MODEL       || '';
+  const claudeKey    = process.env.ANTHROPIC_API_KEY  || '';
+  const claudeBase   = process.env.ANTHROPIC_BASE_URL || '';
+  const claudeModel  = process.env.ANTHROPIC_MODEL    || '';
+
+  const anthropicIsNative = claudeBase.includes('api.anthropic.com');
 
   const configs = [
     {
       label: 'GPT-4o',
-      fn: () => callOpenAIFormat(
-        prompt,
-        process.env.OPENAI_API_KEY || '',
-        process.env.OPENAI_BASE_URL || 'https://api.openai.com',
-        process.env.OPENAI_MODEL || 'gpt-4o',
-      ),
+      fn: () => callOpenAIFormat(prompt, openaiKey, openaiBase, openaiModel),
     },
     {
       label: 'Gemini',
-      fn: () => callOpenAIFormat(
-        prompt,
-        process.env.GEMINI_API_KEY || '',
-        process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai',
-        process.env.GEMINI_MODEL || 'gemini-2.0-flash',
-      ),
+      fn: () => callOpenAIFormat(prompt, geminiKey, geminiBase, geminiModel),
     },
     {
       label: 'Claude',
       fn: () => anthropicIsNative
-        ? callAnthropicNative(
-            prompt,
-            process.env.ANTHROPIC_API_KEY || '',
-            anthropicBase,
-            process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',
-          )
-        : callOpenAIFormat(
-            prompt,
-            process.env.ANTHROPIC_API_KEY || '',
-            anthropicBase,
-            process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
-          ),
+        ? callAnthropicNative(prompt, claudeKey, claudeBase, claudeModel)
+        : callOpenAIFormat(prompt, claudeKey, claudeBase, claudeModel),
     },
   ];
 
