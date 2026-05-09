@@ -138,15 +138,15 @@ exports.handler = async (event) => {
   const prompt = buildPrompt(name);
 
   // All values come strictly from environment variables — no hardcoded fallbacks
-  const openaiKey    = process.env.OPENAI_API_KEY     || '';
-  const openaiBase   = process.env.OPENAI_BASE_URL    || '';
-  const openaiModel  = process.env.OPENAI_MODEL       || '';
-  const geminiKey    = process.env.GEMINI_API_KEY     || '';
-  const geminiBase   = process.env.GEMINI_BASE_URL    || '';
-  const geminiModel  = process.env.GEMINI_MODEL       || '';
-  const claudeKey    = process.env.ANTHROPIC_API_KEY  || '';
-  const claudeBase   = process.env.ANTHROPIC_BASE_URL || '';
-  const claudeModel  = process.env.ANTHROPIC_MODEL    || '';
+  const openaiKey     = process.env.OPENAI_API_KEY     || '';
+  const openaiBase    = process.env.OPENAI_BASE_URL    || '';
+  const openaiModel   = process.env.OPENAI_MODEL       || '';
+  const deepseekKey   = process.env.DEEPSEEK_API_KEY   || '';
+  const deepseekBase  = process.env.DEEPSEEK_BASE_URL  || '';
+  const deepseekModel = process.env.DEEPSEEK_MODEL     || '';
+  const claudeKey     = process.env.ANTHROPIC_API_KEY  || '';
+  const claudeBase    = process.env.ANTHROPIC_BASE_URL || '';
+  const claudeModel   = process.env.ANTHROPIC_MODEL    || '';
 
   const anthropicIsNative = claudeBase.includes('api.anthropic.com');
 
@@ -156,8 +156,8 @@ exports.handler = async (event) => {
       fn: () => callOpenAIFormat(prompt, openaiKey, openaiBase, openaiModel),
     },
     {
-      label: 'Gemini',
-      fn: () => callOpenAIFormat(prompt, geminiKey, geminiBase, geminiModel),
+      label: 'DeepSeek',
+      fn: () => callOpenAIFormat(prompt, deepseekKey, deepseekBase, deepseekModel),
     },
     {
       label: 'Claude',
