@@ -50,8 +50,22 @@ Return ONLY the JSON object, nothing else.`;
 }
 
 function parseJSON(text) {
-  const clean = text.replace(/^```[\w]*\n?/m, '').replace(/\n?```$/m, '').trim();
-  return JSON.parse(clean);
+  // 1. Try extracting content inside code fences  ```json ... ```
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) {
+    try { return JSON.parse(fenceMatch[1].trim()); } catch(e) {}
+  }
+
+  // 2. Try the outermost { ... } block
+  const objMatch = text.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try { return JSON.parse(objMatch[0]); } catch(e) {
+      throw new Error('JSON parse error: ' + e.message + ' — raw: ' + objMatch[0].slice(0, 120));
+    }
+  }
+
+  // 3. Direct parse fallback
+  return JSON.parse(text.trim());
 }
 
 // HTTP/HTTPS request using Node built-in modules
