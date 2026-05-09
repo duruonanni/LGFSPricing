@@ -1,11 +1,15 @@
 /**
  * Netlify Function: customer-intel
- * Calls GPT-4o, DeepSeek, and Claude in parallel.
+ * Calls GPT-4o, DeepSeek, and Claude in parallel using Node https module.
  * Required env vars:
  *   OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
  *   DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
  *   ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, ANTHROPIC_MODEL
  */
+
+const https = require('https');
+const http  = require('http');
+const url   = require('url');
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -41,7 +45,6 @@ Analyse the company "${name}" and return ONLY a JSON object with these exact fie
   "pricing_notes": "any special considerations for pricing this customer (max 2 sentences)",
   "data_confidence": "high or medium or low"
 }
-
 GCR key: 1-4=low risk, 5=medium(default), 6=elevated, 7=high risk.
 Return ONLY the JSON object, nothing else.`;
 }
@@ -49,6 +52,36 @@ Return ONLY the JSON object, nothing else.`;
 function parseJSON(text) {
   const clean = text.replace(/^```[\w]*\n?/m, '').replace(/\n?```$/m, '').trim();
   return JSON.parse(clean);
+}
+
+// HTTP/HTTPS request using Node built-in modules
+function httpRequest(endpoint, headers, body) {
+  return new Promise((resolve, reject) => {
+    const parsed = url.parse(endpoint);
+    const isHttps = parsed.protocol === 'https:';
+    const lib = isHttps ? https : http;
+
+    const options = {
+      hostname: parsed.hostname,
+      port: parsed.port || (isHttps ? 443 : 80),
+      path: parsed.path,
+      method: 'POST',
+      headers: { ...headers, 'Content-Length': Buffer.byteLength(body) },
+      timeout: 8000,
+      rejectUnauthorized: false,
+    };
+
+    const req = lib.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode, body: data }));
+    });
+
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Request timed out')); });
+    req.write(body);
+    req.end();
+  });
 }
 
 function buildEndpoint(base, isAnthropic) {
@@ -63,51 +96,37 @@ function buildEndpoint(base, isAnthropic) {
 }
 
 async function callModel(prompt, apiKey, baseUrl, model, useAnthropicFormat) {
-  if (!apiKey) throw new Error('API key not configured');
-  if (!baseUrl) throw new Error('Base URL not configured');
-  if (!model) throw new Error('Model name not configured');
+  if (!apiKey)   throw new Error('API key not configured');
+  if (!baseUrl)  throw new Error('Base URL not configured');
+  if (!model)    throw new Error('Model name not configured');
 
   const endpoint = buildEndpoint(baseUrl, useAnthropicFormat);
+  const body = JSON.stringify({
+    model,
+    max_tokens: 1024,
+    messages: [{ role: 'user', content: prompt }],
+  });
 
-  let headers, body;
-  if (useAnthropicFormat) {
-    headers = {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    };
-    body = JSON.stringify({ model, max_tokens: 1024, messages: [{ role: 'user', content: prompt }] });
-  } else {
-    headers = {
-      'authorization': `Bearer ${apiKey}`,
-      'content-type': 'application/json',
-    };
-    body = JSON.stringify({ model, max_tokens: 1024, messages: [{ role: 'user', content: prompt }] });
-  }
+  const headers = useAnthropicFormat
+    ? { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }
+    : { 'authorization': `Bearer ${apiKey}`, 'content-type': 'application/json' };
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 28000);
+  const { status, body: rawBody } = await httpRequest(endpoint, headers, body);
 
-  let res;
-  try {
-    res = await fetch(endpoint, { method: 'POST', headers, body, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-
-  const data = await res.json();
+  let data;
+  try { data = JSON.parse(rawBody); }
+  catch(e) { throw new Error(`Invalid JSON response (HTTP ${status}): ${rawBody.slice(0, 200)}`); }
 
   if (data.error) {
     const msg = typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error));
     throw new Error(msg);
   }
 
-  // Extract text: OpenAI format or Anthropic format
   const text = useAnthropicFormat
     ? data.content?.[0]?.text?.trim()
     : data.choices?.[0]?.message?.content?.trim();
 
-  if (!text) throw new Error(`Empty response from API (HTTP ${res.status})`);
+  if (!text) throw new Error(`Empty response (HTTP ${status})`);
   return parseJSON(text);
 }
 
@@ -117,30 +136,26 @@ exports.handler = async (event) => {
   }
 
   try {
-    const name = ((event.queryStringParameters || {}).name || '').trim();
-    if (!name) return jsonResponse({ error: 'Missing ?name= parameter' }, 400);
+    const name = ((event.queryStringParameters) || {}).name || '';
+    if (!name.trim()) return jsonResponse({ error: 'Missing ?name= parameter' }, 400);
 
-    const prompt = buildPrompt(name);
+    const prompt = buildPrompt(name.trim());
 
     const openaiKey    = process.env.OPENAI_API_KEY     || '';
     const openaiBase   = process.env.OPENAI_BASE_URL    || '';
     const openaiModel  = process.env.OPENAI_MODEL       || '';
-
     const deepseekKey  = process.env.DEEPSEEK_API_KEY   || '';
     const deepseekBase = process.env.DEEPSEEK_BASE_URL  || '';
     const deepseekModel= process.env.DEEPSEEK_MODEL     || '';
-
     const claudeKey    = process.env.ANTHROPIC_API_KEY  || '';
     const claudeBase   = process.env.ANTHROPIC_BASE_URL || '';
     const claudeModel  = process.env.ANTHROPIC_MODEL    || '';
-
-    // Use native Anthropic format only if pointing at api.anthropic.com
     const claudeNative = claudeBase.includes('api.anthropic.com');
 
     const configs = [
-      { label: 'GPT-4o',   fn: () => callModel(prompt, openaiKey,   openaiBase,   openaiModel,   false) },
-      { label: 'DeepSeek', fn: () => callModel(prompt, deepseekKey, deepseekBase, deepseekModel, false) },
-      { label: 'Claude',   fn: () => callModel(prompt, claudeKey,   claudeBase,   claudeModel,   claudeNative) },
+      { label: 'GPT-4o',   fn: () => callModel(prompt, openaiKey,   openaiBase,   openaiModel,    false) },
+      { label: 'DeepSeek', fn: () => callModel(prompt, deepseekKey, deepseekBase, deepseekModel,  false) },
+      { label: 'Claude',   fn: () => callModel(prompt, claudeKey,   claudeBase,   claudeModel,    claudeNative) },
     ];
 
     const settled = await Promise.allSettled(configs.map(c => c.fn()));
@@ -148,13 +163,12 @@ exports.handler = async (event) => {
       model: configs[i].label,
       data: r.status === 'fulfilled'
         ? r.value
-        : { error: String(r.reason?.message || r.reason || 'Unknown error') },
+        : { error: String(r.reason && r.reason.message ? r.reason.message : r.reason) },
     }));
 
     return jsonResponse({ responses });
 
   } catch (err) {
-    // Always return valid JSON even on unexpected errors
-    return jsonResponse({ error: String(err.message || err) }, 500);
+    return jsonResponse({ error: String(err && err.message ? err.message : err) }, 500);
   }
 };

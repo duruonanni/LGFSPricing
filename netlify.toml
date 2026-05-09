@@ -1,2 +1,9 @@
+[build]
+  publish = "."
+
 [functions]
   directory = "netlify/functions"
+  node_bundler = "zisi"
+
+[functions.customer-intel]
+  timeout = 26
