@@ -3614,12 +3614,28 @@ async function authSignUp() {
   if (password.length < 8)              { _authErr('reg-err', 'Password must be at least 8 characters.'); return; }
   if (password !== confirm)             { _authErr('reg-err', 'Passwords do not match.'); return; }
   _authBtnLoading('reg-btn', true);
-  const { error } = await _supabase.auth.signUp({
+  const { data: signUpData, error } = await _supabase.auth.signUp({
     email, password,
     options: { data: { full_name: name } }
   });
   _authBtnLoading('reg-btn', false);
-  if (error) { _authErr('reg-err', error.message); return; }
+  if (error) {
+    const msg = error.message || '';
+    if (msg.toLowerCase().includes('sending') || msg.toLowerCase().includes('email') || msg.toLowerCase().includes('smtp')) {
+      _authErr('reg-err', '邮件发送失败。请联系管理员，或稍后重试。（SMTP未配置或发送域名未验证）');
+    } else if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('already been registered')) {
+      _authErr('reg-err', '该邮箱已注册，请直接登录或重置密码。');
+    } else {
+      _authErr('reg-err', msg);
+    }
+    return;
+  }
+  // If email confirmation is disabled, session is returned immediately → go straight to app
+  if (signUpData?.session) {
+    // onAuthStateChange will fire and call applySession()
+    return;
+  }
+  // Email confirmation required
   document.getElementById('pending-msg').textContent =
     `We sent a confirmation link to ${email}. Click the link to activate your account.`;
   showAuthScreen('pending');
