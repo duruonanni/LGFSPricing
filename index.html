@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LGFS Price Grid Calculator</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231e3a8a'/><text x='50%' y='50%' dominant-baseline='central' text-anchor='middle' font-size='18' fill='white'>₤</text></svg>">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -3228,14 +3229,18 @@ async function authSignIn() {
   if (!email.endsWith('@lenovo.com')) { _authErr('login-err', 'Only @lenovo.com accounts are allowed.'); return; }
   _authBtnLoading('login-btn', true);
   try {
+    console.log('[Auth] Calling signInWithPassword for', email);
     const timeout = new Promise((_, rej) =>
       setTimeout(() => rej(new Error('Request timed out. Check Supabase project status and Site URL configuration.')), 12000));
-    const { error } = await Promise.race([
+    const result = await Promise.race([
       _supabase.auth.signInWithPassword({ email, password }),
       timeout
     ]);
-    if (error) { _authErr('login-err', error.message); return; }
+    console.log('[Auth] signInWithPassword resolved. error:', result?.error?.message || 'none');
+    if (result?.error) { _authErr('login-err', result.error.message); return; }
+    console.log('[Auth] Sign-in success — waiting for onAuthStateChange');
   } catch(e) {
+    console.error('[Auth] signInWithPassword threw:', e);
     _authErr('login-err', e.message || 'Network error. Please try again.');
   } finally {
     _authBtnLoading('login-btn', false);
@@ -3333,13 +3338,21 @@ async function logout() {
 // ── Fetch user profile from DB ───────────────────────────────
 async function fetchProfile(userId) {
   if (!_supabase) return null;
-  const { data, error } = await _supabase
-    .from('profiles')
-    .select('full_name, role')
-    .eq('id', userId)
-    .single();
-  if (error) { console.warn('Profile fetch error:', error.message); return null; }
-  return data;
+  try {
+    const timeoutPromise = new Promise((_, rej) =>
+      setTimeout(() => rej(new Error('Profile fetch timed out')), 6000));
+    const queryPromise = _supabase
+      .from('profiles')
+      .select('full_name, role')
+      .eq('id', userId)
+      .single();
+    const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
+    if (error) { console.warn('Profile fetch error:', error.message); return null; }
+    return data;
+  } catch(e) {
+    console.warn('fetchProfile failed:', e.message);
+    return null;
+  }
 }
 
 // ── Dev / Local Mode ─────────────────────────────────────────
@@ -3424,26 +3437,41 @@ function initSupabaseAuth() {
   }
 
   _supabase.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'PASSWORD_RECOVERY') {
-      document.getElementById('auth-overlay').style.display = 'flex';
-      showAuthScreen('newpass');
-      return;
-    }
-    if (session?.user) {
-      const profile = await fetchProfile(session.user.id);
-      const email   = session.user.email || '';
-      _currentUser  = {
-        id:    session.user.id,
-        email: email,
-        name:  profile?.full_name || email.split('@')[0],
-        role:  profile?.role      || 'Seller',
-      };
-      document.getElementById('auth-overlay').style.display = 'none';
-      applySession();
-    } else {
-      _currentUser = null;
-      document.getElementById('auth-overlay').style.display = 'flex';
-      showAuthScreen('login');
+    console.log('[Auth] event:', event, '| user:', session?.user?.email || 'none');
+    try {
+      if (event === 'PASSWORD_RECOVERY') {
+        document.getElementById('auth-overlay').style.display = 'flex';
+        showAuthScreen('newpass');
+        return;
+      }
+      if (session?.user) {
+        console.log('[Auth] Fetching profile for', session.user.id);
+        const profile = await fetchProfile(session.user.id);
+        console.log('[Auth] Profile result:', profile);
+        const email   = session.user.email || '';
+        _currentUser  = {
+          id:    session.user.id,
+          email: email,
+          name:  profile?.full_name || email.split('@')[0],
+          role:  profile?.role      || 'Seller',
+        };
+        console.log('[Auth] _currentUser set:', _currentUser.name, _currentUser.role);
+        document.getElementById('auth-overlay').style.display = 'none';
+        applySession();
+      } else {
+        _currentUser = null;
+        document.getElementById('auth-overlay').style.display = 'flex';
+        showAuthScreen('login');
+      }
+    } catch(e) {
+      console.error('[Auth] onAuthStateChange error:', e);
+      // Still try to show the app with basic user info
+      if (session?.user) {
+        const email = session.user.email || '';
+        _currentUser = { id: session.user.id, email, name: email.split('@')[0], role: 'Seller' };
+        document.getElementById('auth-overlay').style.display = 'none';
+        applySession();
+      }
     }
   });
 }
