@@ -3228,11 +3228,15 @@ async function authSignIn() {
   if (!email.endsWith('@lenovo.com')) { _authErr('login-err', 'Only @lenovo.com accounts are allowed.'); return; }
   _authBtnLoading('login-btn', true);
   try {
-    const { error } = await _supabase.auth.signInWithPassword({ email, password });
+    const timeout = new Promise((_, rej) =>
+      setTimeout(() => rej(new Error('Request timed out. Check Supabase project status and Site URL configuration.')), 12000));
+    const { error } = await Promise.race([
+      _supabase.auth.signInWithPassword({ email, password }),
+      timeout
+    ]);
     if (error) { _authErr('login-err', error.message); return; }
-    // Session handled by onAuthStateChange
   } catch(e) {
-    _authErr('login-err', 'Login failed: ' + (e.message || 'Network error. Please try again.'));
+    _authErr('login-err', e.message || 'Network error. Please try again.');
   } finally {
     _authBtnLoading('login-btn', false);
   }
