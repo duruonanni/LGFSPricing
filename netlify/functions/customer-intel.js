@@ -81,7 +81,7 @@ function httpRequest(endpoint, headers, body) {
       path: parsed.path,
       method: 'POST',
       headers: { ...headers, 'Content-Length': Buffer.byteLength(body) },
-      timeout: 8000,
+      timeout: 20000,
       rejectUnauthorized: false,
     };
 
