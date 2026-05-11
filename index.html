@@ -621,6 +621,7 @@ header h1 span{opacity:.7;font-weight:400;font-size:14px;margin-left:8px}
   <div class="tab" data-tab="countries" onclick="showTab('countries')">Countries &amp; Rates</div>
   <div class="tab" data-tab="reference" onclick="showTab('reference')">Reference Tables</div>
   <div class="tab" data-tab="history" onclick="showTab('history')">📊 Deal History</div>
+  <div class="tab" data-tab="admin" onclick="showTab('admin')" id="tab-nav-admin" style="display:none">⚙️ Admin</div>
 </div>
 
 <div id="mobile-nav">
@@ -638,6 +639,9 @@ header h1 span{opacity:.7;font-weight:400;font-size:14px;margin-left:8px}
   </div>
   <div class="m-tab" data-tab="history" onclick="showTab('history')">
     <span class="m-icon">📊</span>History
+  </div>
+  <div class="m-tab" data-tab="admin" onclick="showTab('admin')" id="m-tab-nav-admin" style="display:none">
+    <span class="m-icon">⚙️</span>Admin
   </div>
 </div>
 
@@ -1243,6 +1247,32 @@ header h1 span{opacity:.7;font-weight:400;font-size:14px;margin-left:8px}
       <tbody id="hist-tbody"></tbody>
     </table>
     <div id="hist-empty" class="hist-empty" style="display:none">No saved deals yet. Generate a PDF Quote in the Single Country Deal tab to automatically save a deal.</div>
+  </div>
+</div>
+
+<!-- ===== ADMIN PAGE ===== -->
+<div id="tab-admin" class="page">
+  <div class="card">
+    <div class="card-header" style="justify-content:space-between">
+      <span>⚙️ User Management</span>
+      <button class="btn btn-secondary btn-sm" onclick="loadAdminUsers()">🔄 Refresh</button>
+    </div>
+    <div class="card-body">
+      <div id="admin-msg" style="font-size:13px;color:var(--gray);margin-bottom:12px"></div>
+      <table class="asset-table" id="admin-users-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th style="text-align:center">Change Role</th>
+          </tr>
+        </thead>
+        <tbody id="admin-users-body">
+          <tr><td colspan="4" style="text-align:center;color:var(--gray);padding:20px">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 
@@ -3505,6 +3535,14 @@ function applyRoleUI(role) {
   const isSeller   = role === 'Seller';
   const isPricer   = role === 'Pricer';
   const isApprover = role === 'Geo Lead' || role === 'RV Committee';
+  const isAdmin    = role === 'Admin';
+
+  // Admin tab — only visible to Admin
+  const adminTab  = document.getElementById('tab-nav-admin');
+  const mAdminTab = document.getElementById('m-tab-nav-admin');
+  if (adminTab)  adminTab.style.display  = isAdmin ? '' : 'none';
+  if (mAdminTab) mAdminTab.style.display = isAdmin ? '' : 'none';
+  if (isAdmin) { loadAdminUsers(); return; }  // Admin sees only the admin page
 
   // Only Pricer can Refresh Bond Rates + Export for Distribution
   const refreshBtn = document.getElementById('refreshBtnHeader');
@@ -3537,6 +3575,68 @@ function applyRoleUI(role) {
       showTab('history');
     }
   });
+}
+
+// ── Admin: User Management ────────────────────────────────────
+const ALL_ROLES = ['Seller', 'Pricer', 'Geo Lead', 'RV Committee', 'Admin'];
+
+async function loadAdminUsers() {
+  if (!_supabase) return;
+  showTab('admin');
+  const msgEl  = document.getElementById('admin-msg');
+  const tbody  = document.getElementById('admin-users-body');
+  if (msgEl) msgEl.textContent = '';
+  if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--gray);padding:20px">Loading…</td></tr>';
+
+  const { data, error } = await _supabase
+    .from('profiles')
+    .select('id, full_name, email, role')
+    .order('full_name');
+
+  if (error) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="4" style="color:var(--red);padding:16px">Error: ${error.message}</td></tr>`;
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--gray);padding:20px">No users found.</td></tr>';
+    return;
+  }
+
+  if (tbody) {
+    tbody.innerHTML = data.map(u => `
+      <tr>
+        <td>${u.full_name || '—'}</td>
+        <td style="color:var(--gray)">${u.email || '—'}</td>
+        <td><span class="badge" style="background:#e0e7ff;color:#3730a3">${u.role}</span></td>
+        <td style="text-align:center">
+          <select id="role-sel-${u.id}" style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;margin-right:6px">
+            ${ALL_ROLES.map(r => `<option value="${r}" ${r === u.role ? 'selected' : ''}>${r}</option>`).join('')}
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="saveUserRole('${u.id}','${u.email}')">Save</button>
+        </td>
+      </tr>`).join('');
+  }
+}
+
+async function saveUserRole(userId, email) {
+  const sel = document.getElementById(`role-sel-${userId}`);
+  if (!sel) return;
+  const newRole = sel.value;
+  const msgEl   = document.getElementById('admin-msg');
+
+  const { error } = await _supabase
+    .from('profiles')
+    .update({ role: newRole })
+    .eq('id', userId);
+
+  if (error) {
+    if (msgEl) { msgEl.textContent = `❌ Failed to update ${email}: ${error.message}`; msgEl.style.color = 'var(--red)'; }
+    return;
+  }
+  if (msgEl) { msgEl.textContent = `✓ ${email} role updated to ${newRole}`; msgEl.style.color = 'var(--green)'; }
+  // Refresh the table
+  setTimeout(loadAdminUsers, 800);
 }
 
 // ── Keep login-name input in sync with button disabled state ──
