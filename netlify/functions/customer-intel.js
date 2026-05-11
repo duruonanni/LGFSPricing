@@ -117,7 +117,7 @@ async function callModel(prompt, apiKey, baseUrl, model, useAnthropicFormat) {
   const endpoint = buildEndpoint(baseUrl, useAnthropicFormat);
   const body = JSON.stringify({
     model,
-    max_tokens: 1024,
+    max_tokens: 2048,
     messages: [{ role: 'user', content: prompt }],
   });
 
