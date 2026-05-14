@@ -932,6 +932,13 @@ header h1 span{opacity:.7;font-weight:400;font-size:14px;margin-left:8px}
         <div class="card-body" id="s-approval-list"></div>
       </div>
 
+      <!-- Save as PDF Quote button -->
+      <div id="s-quote-bar" style="display:none;margin-top:16px;text-align:right">
+        <button class="btn" style="background:rgba(226,16,12,.85);color:#fff;border:1px solid rgba(226,16,12,.5);padding:9px 22px;font-size:14px" onclick="generateQuote()">
+          📄 Save as PDF Quote
+        </button>
+      </div>
+
     </div>
   </div>
 </div>
@@ -1034,6 +1041,13 @@ header h1 span{opacity:.7;font-weight:400;font-size:14px;margin-left:8px}
     <span style="font-size:13px;color:#92400e;flex:1">⚠️ This deal requires approval before proceeding.</span>
     <button class="btn btn-primary" id="gSubmitBtn" onclick="submitGlobalForApproval()" style="background:#f59e0b;border-color:#d97706;font-size:13px;padding:9px 22px">
       📤 Submit for Approval
+    </button>
+  </div>
+
+  <!-- Save as PDF Quote button -->
+  <div id="g-quote-bar" style="display:none;margin-top:16px;text-align:right">
+    <button class="btn" style="background:rgba(226,16,12,.85);color:#fff;border:1px solid rgba(226,16,12,.5);padding:9px 22px;font-size:14px" onclick="generateQuote()">
+      📄 Save as PDF Quote
     </button>
   </div>
 </div>
@@ -3669,9 +3683,14 @@ function applyRoleUI(role) {
   const statusBar = document.querySelector('.status-bar');
   if (statusBar) statusBar.style.display = canRefresh ? '' : 'none';
 
-  // Save as PDF Quote — Seller + Admin
-  const quoteBtn = document.getElementById('quoteBtn');
-  if (quoteBtn) quoteBtn.style.display = (isSeller || isAdmin) ? '' : 'none';
+  // Save as PDF Quote — Seller + Admin (header + page buttons)
+  const quoteBtn  = document.getElementById('quoteBtn');
+  const sQuoteBar = document.getElementById('s-quote-bar');
+  const gQuoteBar = document.getElementById('g-quote-bar');
+  const showQuote = (isSeller || isAdmin) ? '' : 'none';
+  if (quoteBtn)  quoteBtn.style.display  = showQuote;
+  if (sQuoteBar) sQuoteBar.style.display = showQuote;
+  if (gQuoteBar) gQuoteBar.style.display = showQuote;
 
   // CoF Override — non-Sellers
   const cofField = document.getElementById('field-cofOverride');
@@ -3856,41 +3875,7 @@ function showApprovalSuccessAndReset(type) {
   document.body.appendChild(toast);
 
   setTimeout(() => {
-    toast.remove();
-    // Reset the relevant page
-    if (type === 'single') {
-      // Reset Single Country Deal form — all fields
-      const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
-      setVal('s-customer', '');
-      const cntry = document.getElementById('s-country'); if (cntry) cntry.selectedIndex = 0;
-      setVal('s-gcr', '5');
-      setVal('s-term', '36');
-      setVal('s-freq', 'Monthly');
-      setVal('s-timing', '0');
-      setVal('s-payTerms', '30');
-      setVal('s-opex', '0.8');
-      setVal('s-margin', '0.2');
-      setVal('s-commission', '0');
-      setVal('s-cofOverride', '');
-      const repName = document.getElementById('s-repName'); if (repName) repName.value = '';
-      assetRows = [{ qty: 1, price: 0, assetType: 'Laptop / Desktop / AIO', oem: 'Lenovo', subsidyPct: 0, nonStdRV: '' }];
-      renderAssetRows();
-      singleCalc();
-    } else if (type === 'global') {
-      // Reset Global Deal Sheet — all fields
-      const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
-      setVal('g-customer', '');
-      const repEl = document.getElementById('g-repName'); if (repEl) repEl.value = '';
-      setVal('g-term', '36');
-      setVal('g-freq', 'Monthly');
-      setVal('g-timing', '0');
-      setVal('g-payTerms', '30');
-      setVal('g-opex', '0.8');
-      setVal('g-margin', '0.2');
-      globalCountries = [];
-      renderGlobalCountries();
-      globalCalc();
-    }
+    location.reload();
   }, 2500);
 }
 
