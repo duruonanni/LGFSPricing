@@ -615,6 +615,14 @@ header h1 span{opacity:.7;font-weight:400;font-size:14px;margin-left:8px}
   <span id="statusText">Static rates from February 2026. Click "Refresh Bond Rates" to fetch live rates.</span>
 </div>
 
+<div id="poc-banner" style="background:#fffbeb;border-bottom:2px solid #f59e0b;padding:9px 20px;display:flex;align-items:flex-start;gap:10px">
+  <span style="font-size:16px;flex-shrink:0;margin-top:1px">⚠️</span>
+  <div style="font-size:12px;color:#78350f;line-height:1.55">
+    <strong>PoC Tool — Not for Production Use.</strong>
+    This tool is for Proof of Concept purposes only. AI/LLM features used in this tool have <strong>not</strong> been approved by Lenovo Security Review. Data entered into AI features is processed outside of Lenovo's environment and infrastructure. <strong>Do not enter confidential, sensitive, or customer-identifiable data.</strong> This tool must not be used for final production pricing decisions. — 本工具仅供概念验证（PoC）使用，AI 功能未经 Lenovo 安全审批，数据不在 Lenovo 环境内处理，请注意数据安全保密，勿作生产使用。
+  </div>
+</div>
+
 <div class="tabs">
   <div class="tab active" data-tab="single" onclick="showTab('single')">Single Country Deal</div>
   <div class="tab" data-tab="global" onclick="showTab('global')">Global Deal Sheet</div>
@@ -1252,6 +1260,40 @@ header h1 span{opacity:.7;font-weight:400;font-size:14px;margin-left:8px}
 
 <!-- ===== ADMIN PAGE ===== -->
 <div id="tab-admin" class="page">
+
+  <!-- Role Permissions Reference -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-header">📋 Role Permissions</div>
+    <div class="card-body" style="padding:0;overflow-x:auto">
+      <table class="asset-table" style="font-size:12px;min-width:680px">
+        <thead>
+          <tr>
+            <th>Permission</th>
+            <th style="text-align:center">Seller</th>
+            <th style="text-align:center">Pricer</th>
+            <th style="text-align:center">Geo Lead</th>
+            <th style="text-align:center">RV Committee</th>
+            <th style="text-align:center">Admin</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Single Country Deal calculator</td><td style="text-align:center">✅</td><td style="text-align:center">—</td><td style="text-align:center">—</td><td style="text-align:center">—</td><td style="text-align:center">✅</td></tr>
+          <tr><td>Global Deal Sheet</td><td style="text-align:center">✅</td><td style="text-align:center">—</td><td style="text-align:center">—</td><td style="text-align:center">—</td><td style="text-align:center">✅</td></tr>
+          <tr><td>Save as PDF Quote</td><td style="text-align:center">✅</td><td style="text-align:center">—</td><td style="text-align:center">—</td><td style="text-align:center">—</td><td style="text-align:center">✅</td></tr>
+          <tr><td>Deal History</td><td style="text-align:center">✅</td><td style="text-align:center">✅</td><td style="text-align:center">✅</td><td style="text-align:center">✅</td><td style="text-align:center">✅</td></tr>
+          <tr><td>Countries &amp; Rates / Reference Tables</td><td style="text-align:center">✅</td><td style="text-align:center">✅</td><td style="text-align:center">✅</td><td style="text-align:center">✅</td><td style="text-align:center">✅</td></tr>
+          <tr><td>Refresh Bond Rates (live data)</td><td style="text-align:center">—</td><td style="text-align:center">✅</td><td style="text-align:center">—</td><td style="text-align:center">—</td><td style="text-align:center">✅</td></tr>
+          <tr><td>Export Updated HTML for Distribution</td><td style="text-align:center">—</td><td style="text-align:center">✅</td><td style="text-align:center">—</td><td style="text-align:center">—</td><td style="text-align:center">✅</td></tr>
+          <tr><td>CoF Override field</td><td style="text-align:center">—</td><td style="text-align:center">✅</td><td style="text-align:center">✅</td><td style="text-align:center">✅</td><td style="text-align:center">✅</td></tr>
+          <tr><td>Edit bond rates manually</td><td style="text-align:center">—</td><td style="text-align:center">✅</td><td style="text-align:center">—</td><td style="text-align:center">—</td><td style="text-align:center">✅</td></tr>
+          <tr><td>Customer Intelligence (AI Lookup)</td><td style="text-align:center">✅</td><td style="text-align:center">✅</td><td style="text-align:center">✅</td><td style="text-align:center">✅</td><td style="text-align:center">✅</td></tr>
+          <tr><td>User Management (Admin Panel)</td><td style="text-align:center">—</td><td style="text-align:center">—</td><td style="text-align:center">—</td><td style="text-align:center">—</td><td style="text-align:center">✅</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- User Management -->
   <div class="card">
     <div class="card-header" style="justify-content:space-between">
       <span>⚙️ User Management</span>
@@ -3549,45 +3591,66 @@ function applyRoleUI(role) {
   const isPricer   = role === 'Pricer';
   const isApprover = role === 'Geo Lead' || role === 'RV Committee';
   const isAdmin    = role === 'Admin';
+  const canRefresh = isPricer || isAdmin;
 
   // Admin tab — only visible to Admin
   const adminTab  = document.getElementById('tab-nav-admin');
   const mAdminTab = document.getElementById('m-tab-nav-admin');
   if (adminTab)  adminTab.style.display  = isAdmin ? '' : 'none';
   if (mAdminTab) mAdminTab.style.display = isAdmin ? '' : 'none';
-  if (isAdmin) { loadAdminUsers(); return; }  // Admin sees only the admin page
 
-  // Only Pricer can Refresh Bond Rates + Export for Distribution
-  const refreshBtn = document.getElementById('refreshBtnHeader');
-  const exportBtn  = document.getElementById('exportBtn');
-  if (refreshBtn) refreshBtn.style.display = isPricer ? '' : 'none';
-  if (exportBtn)  exportBtn.style.display  = isPricer ? '' : 'none';
+  // Admin: full access to all tabs, open Admin tab
+  if (isAdmin) {
+    ['single','global'].forEach(tab => {
+      const t = document.querySelector(`.tab[data-tab="${tab}"]`);
+      const m = document.querySelector(`.m-tab[data-tab="${tab}"]`);
+      if (t) t.style.display = '';
+      if (m) m.style.display = '';
+    });
+    loadAdminUsers();
+  }
 
-  // Only Seller sees Save as PDF Quote button (header)
+  // Refresh Bond Rates + Export — Pricer + Admin
+  const refreshBtn  = document.getElementById('refreshBtnHeader');
+  const refreshBtnC = document.getElementById('refreshBtnCountries');
+  const exportBtn   = document.getElementById('exportBtn');
+  const ratesAge    = document.getElementById('ratesAge');
+  if (refreshBtn)  refreshBtn.style.display  = canRefresh ? '' : 'none';
+  if (refreshBtnC) refreshBtnC.style.display = canRefresh ? '' : 'none';
+  if (exportBtn)   exportBtn.style.display   = canRefresh ? '' : 'none';
+  if (ratesAge)    ratesAge.style.display    = canRefresh ? '' : 'none';
+
+  // Static rates status bar — only for Pricer + Admin
+  const statusBar = document.querySelector('.status-bar');
+  if (statusBar) statusBar.style.display = canRefresh ? '' : 'none';
+
+  // Save as PDF Quote — Seller + Admin
   const quoteBtn = document.getElementById('quoteBtn');
-  if (quoteBtn) quoteBtn.style.display = isSeller ? '' : 'none';
+  if (quoteBtn) quoteBtn.style.display = (isSeller || isAdmin) ? '' : 'none';
 
-  // Only non-Sellers see CoF Override field
+  // CoF Override — non-Sellers
   const cofField = document.getElementById('field-cofOverride');
   if (cofField) cofField.style.display = isSeller ? 'none' : '';
 
-  // Pricer: show editable hint on bond rate table and re-render to show inputs
+  // Rate editable hint — Pricer + Admin
   const rateHint = document.getElementById('rate-edit-hint');
-  if (rateHint) rateHint.style.display = isPricer ? 'inline' : 'none';
+  if (rateHint) rateHint.style.display = canRefresh ? 'inline' : 'none';
   renderCountriesTable();
 
-  // Pricer + Approvers: hide Single Country Deal + Global Deal Sheet tabs
-  const hideDealTabs = isPricer || isApprover;
-  ['single', 'global'].forEach(tab => {
-    const tabEl  = document.querySelector(`.tab[data-tab="${tab}"]`);
-    const mTabEl = document.querySelector(`.m-tab[data-tab="${tab}"]`);
-    const pageEl = document.getElementById(`tab-${tab}`);
-    if (tabEl)  tabEl.style.display  = hideDealTabs ? 'none' : '';
-    if (mTabEl) mTabEl.style.display = hideDealTabs ? 'none' : '';
-    if (pageEl && hideDealTabs && pageEl.classList.contains('active')) {
-      showTab('history');
-    }
-  });
+  // Pricer + Approvers: hide Single + Global Deal tabs
+  if (!isAdmin) {
+    const hideDealTabs = isPricer || isApprover;
+    ['single', 'global'].forEach(tab => {
+      const tabEl  = document.querySelector(`.tab[data-tab="${tab}"]`);
+      const mTabEl = document.querySelector(`.m-tab[data-tab="${tab}"]`);
+      const pageEl = document.getElementById(`tab-${tab}`);
+      if (tabEl)  tabEl.style.display  = hideDealTabs ? 'none' : '';
+      if (mTabEl) mTabEl.style.display = hideDealTabs ? 'none' : '';
+      if (pageEl && hideDealTabs && pageEl.classList.contains('active')) {
+        showTab('history');
+      }
+    });
+  }
 }
 
 // ── Admin: User Management ────────────────────────────────────
