@@ -3481,6 +3481,13 @@ function initSupabaseAuth() {
         return;
       }
       if (session?.user) {
+        // If we already have this user's profile loaded, don't re-fetch
+        // (TOKEN_REFRESHED, USER_UPDATED etc. should not overwrite the role)
+        if (_currentUser?.id === session.user.id && _currentUser?.role) {
+          console.log('[Auth] Session refreshed, keeping existing profile:', _currentUser.role);
+          document.getElementById('auth-overlay').style.display = 'none';
+          return;
+        }
         console.log('[Auth] Fetching profile for', session.user.id);
         const profile = await fetchProfile(session.user.id);
         console.log('[Auth] Profile result:', profile);
