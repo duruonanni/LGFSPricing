@@ -589,9 +589,7 @@ header h1 span{opacity:.7;font-weight:400;font-size:14px;margin-left:8px}
     <button id="exportBtn" class="btn btn-sm" style="background:rgba(16,185,129,.8);color:#fff;border:1px solid rgba(16,185,129,.5)" onclick="exportUpdatedHTML()">
       ↓ Export for Distribution
     </button>
-    <button id="quoteBtn" class="btn btn-sm" style="background:rgba(226,16,12,.85);color:#fff;border:1px solid rgba(226,16,12,.5)" onclick="generateQuote()">
-      &#128196; Save as PDF Quote
-    </button>
+
     <div style="display:flex;align-items:center;gap:8px;border-left:1px solid rgba(255,255,255,.2);padding-left:12px;margin-left:4px">
       <span id="header-user-name" style="font-size:13px;font-weight:600;opacity:.9"></span>
       <span id="header-role-badge" class="role-badge"></span>
@@ -3700,12 +3698,10 @@ function applyRoleUI(role) {
   const statusBar = document.querySelector('.status-bar');
   if (statusBar) statusBar.style.display = canRefresh ? '' : 'none';
 
-  // Save as PDF Quote — Seller + Admin (header + page buttons)
-  const quoteBtn  = document.getElementById('quoteBtn');
+  // Save as PDF Quote — Seller + Admin (page-level buttons only)
   const sQuoteBar = document.getElementById('s-quote-bar');
   const gQuoteBar = document.getElementById('g-quote-bar');
   const showQuote = (isSeller || isAdmin) ? '' : 'none';
-  if (quoteBtn)  quoteBtn.style.display  = showQuote;
   if (sQuoteBar) sQuoteBar.style.display = showQuote;
   if (gQuoteBar) gQuoteBar.style.display = showQuote;
 
