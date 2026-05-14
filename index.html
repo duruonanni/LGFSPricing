@@ -1130,13 +1130,13 @@ header h1 span{opacity:.7;font-weight:400;font-size:14px;margin-left:8px}
             </thead>
             <tbody>
               <tr>
-                <td>LGFS Margin reduced</td>
-                <td>Margin &lt; 0.2%</td>
+                <td>LGFS Opex reduced</td>
+                <td>Opex &lt; 0.8%</td>
                 <td><span class="badge" style="background:#e0f2fe;color:#0369a1">Pricer</span></td>
               </tr>
               <tr>
-                <td>LGFS Opex reduced</td>
-                <td>Opex &lt; 0.8%</td>
+                <td>LGFS Margin reduced</td>
+                <td>Margin &lt; 0.2%</td>
                 <td>
                   <span class="badge" style="background:#e0f2fe;color:#0369a1">Pricer</span>
                   <span style="color:#94a3b8;margin:0 4px">→</span>
@@ -1977,10 +1977,11 @@ function singleCalc() {
 
 function buildApprovalChain(triggers) {
   // DoA rules:
-  //   LGFS Opex low    → Pricer
+  //   LGFS Opex low    → Pricer only
   //   LGFS Margin low  → Pricer → Geo Lead
-  //   GCR low / RV diff → Pricer
-  //   RV diff > 2%     → + RV Committee
+  //   GCR low          → Pricer only
+  //   RV diff > 0      → Pricer only
+  //   RV diff > 2%     → Pricer → RV Committee
   const any = triggers.opexLow || triggers.marginLow || triggers.gcrLow || triggers.rvDiff > 0;
   if (!any) return [];
   const chain = ['Pricer'];
@@ -3858,13 +3859,34 @@ function showApprovalSuccessAndReset(type) {
     toast.remove();
     // Reset the relevant page
     if (type === 'single') {
-      // Reset Single Country Deal form
-      document.getElementById('s-customer')?.value !== undefined && (document.getElementById('s-customer').value = '');
+      // Reset Single Country Deal form — all fields
+      const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+      setVal('s-customer', '');
+      const cntry = document.getElementById('s-country'); if (cntry) cntry.selectedIndex = 0;
+      setVal('s-gcr', '5');
+      setVal('s-term', '36');
+      setVal('s-freq', 'Monthly');
+      setVal('s-timing', '0');
+      setVal('s-payTerms', '30');
+      setVal('s-opex', '0.8');
+      setVal('s-margin', '0.2');
+      setVal('s-commission', '0');
+      setVal('s-cofOverride', '');
+      const repName = document.getElementById('s-repName'); if (repName) repName.value = '';
       assetRows = [{ qty: 1, price: 0, assetType: 'Laptop / Desktop / AIO', oem: 'Lenovo', subsidyPct: 0, nonStdRV: '' }];
       renderAssetRows();
       singleCalc();
     } else if (type === 'global') {
-      // Reset Global Deal Sheet
+      // Reset Global Deal Sheet — all fields
+      const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+      setVal('g-customer', '');
+      const repEl = document.getElementById('g-repName'); if (repEl) repEl.value = '';
+      setVal('g-term', '36');
+      setVal('g-freq', 'Monthly');
+      setVal('g-timing', '0');
+      setVal('g-payTerms', '30');
+      setVal('g-opex', '0.8');
+      setVal('g-margin', '0.2');
       globalCountries = [];
       renderGlobalCountries();
       globalCalc();
@@ -3961,10 +3983,11 @@ function confirmSubmitApproval() {
 }
 
 // ── Approval action (approve / reject) ───────────────────────
-function showApprovalModal(reqId, action) {
-  const arr = loadApprovalRequests();
-  const req = arr.find(r => r.id === reqId);
-  if (!req) return;
+async function showApprovalModal(reqId, action) {
+  // Load from Supabase first (cross-user); fall back to localStorage
+  const allReqs = await sbLoadApprovals();
+  const req = allReqs.find(r => r.id === reqId) || loadApprovalRequests().find(r => r.id === reqId);
+  if (!req) { alert('Request not found. Please refresh the page.'); return; }
 
   const role      = getCurrentUser()?.role;
   const nextLevel = getNextLevel(req);
@@ -4172,16 +4195,22 @@ async function renderApprovalRequests() {
   }).join('');
 }
 
-function deleteApprovalRequest(id) {
-  const arr = loadApprovalRequests().filter(r => r.id !== id);
-  saveApprovalRequests(arr);
+async function deleteApprovalRequest(id) {
+  // Remove from Supabase
+  if (_supabase) {
+    await _supabase.from('approval_requests').delete().eq('id', id);
+  }
+  // Remove from localStorage
+  saveApprovalRequests(loadApprovalRequests().filter(r => r.id !== id));
   renderApprovalRequests();
 }
 
-function clearOldApprovals() {
+async function clearOldApprovals() {
   if (!confirm('Remove all completed (approved/rejected) requests?')) return;
-  const arr = loadApprovalRequests().filter(r => r.status === 'pending');
-  saveApprovalRequests(arr);
+  if (_supabase) {
+    await _supabase.from('approval_requests').delete().in('status', ['approved','rejected']);
+  }
+  saveApprovalRequests(loadApprovalRequests().filter(r => r.status === 'pending'));
   renderApprovalRequests();
 }
 
