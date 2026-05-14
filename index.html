@@ -2034,7 +2034,7 @@ function checkApprovals(gcr, term, payTerms, opex, margin, annualVol, avgRV, rvD
         ${chain.map((l,i) => `<span style="display:inline-flex;align-items:center;gap:4px">${i>0?'<span style="color:#94a3b8;margin:0 4px">→</span>':''}<span class="badge" style="background:#e0f2fe;color:#0369a1">${l}</span></span>`).join('')}
       </div>` +
       (() => {
-        if (role === 'Seller') {
+        if (role === 'Seller' || role === 'Admin') {
           return `<div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <button class="btn btn-sm btn-primary" onclick="submitForApproval()" style="background:#f59e0b;border-color:#d97706">
               📤 Submit for Approval
