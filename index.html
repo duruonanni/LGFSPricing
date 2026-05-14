@@ -619,7 +619,7 @@ header h1 span{opacity:.7;font-weight:400;font-size:14px;margin-left:8px}
   <span style="font-size:16px;flex-shrink:0;margin-top:1px">⚠️</span>
   <div style="font-size:12px;color:#78350f;line-height:1.55">
     <strong>PoC Tool — Not for Production Use.</strong>
-    This tool is for Proof of Concept purposes only. AI/LLM features used in this tool have <strong>not</strong> been approved by Lenovo Security Review. Data entered into AI features is processed outside of Lenovo's environment and infrastructure. <strong>Do not enter confidential, sensitive, or customer-identifiable data.</strong> This tool must not be used for final production pricing decisions. — 本工具仅供概念验证（PoC）使用，AI 功能未经 Lenovo 安全审批，数据不在 Lenovo 环境内处理，请注意数据安全保密，勿作生产使用。
+    This tool is for Proof of Concept purposes only. AI/LLM features used in this tool have <strong>not</strong> been approved by Lenovo Security Review. Data entered into AI features is processed outside of Lenovo's environment and infrastructure. <strong>Do not enter confidential, sensitive, or customer-identifiable data.</strong> This tool must not be used for final production pricing decisions.
   </div>
 </div>
 
@@ -3409,26 +3409,51 @@ async function authUpdatePassword() {
 async function logout() {
   if (_supabase) await _supabase.auth.signOut();
   _currentUser = null;
+  try { localStorage.removeItem(PROFILE_CACHE_KEY); } catch(e) {}
   showAuthScreen('login');
   document.getElementById('auth-overlay').style.display = 'flex';
 }
 
 // ── Fetch user profile from DB ───────────────────────────────
+const PROFILE_CACHE_KEY = 'lgfs_profile_cache';
+
+function _cacheProfile(userId, profile) {
+  try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({ userId, profile, ts: Date.now() })); } catch(e) {}
+}
+function _getCachedProfile(userId) {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    // Use cache if it belongs to this user and is less than 24h old
+    if (cached.userId === userId && (Date.now() - cached.ts) < 86400000) return cached.profile;
+  } catch(e) {}
+  return null;
+}
+
 async function fetchProfile(userId) {
   if (!_supabase) return null;
   try {
     const timeoutPromise = new Promise((_, rej) =>
-      setTimeout(() => rej(new Error('Profile fetch timed out')), 6000));
+      setTimeout(() => rej(new Error('Profile fetch timed out')), 12000));
     const queryPromise = _supabase
       .from('profiles')
       .select('full_name, role')
       .eq('id', userId)
       .single();
     const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
-    if (error) { console.warn('Profile fetch error:', error.message); return null; }
+    if (error) {
+      console.warn('Profile fetch error:', error.message);
+      const cached = _getCachedProfile(userId);
+      if (cached) { console.log('[Auth] Using cached profile, role:', cached.role); return cached; }
+      return null;
+    }
+    _cacheProfile(userId, data);   // store successful result
     return data;
   } catch(e) {
     console.warn('fetchProfile failed:', e.message);
+    const cached = _getCachedProfile(userId);
+    if (cached) { console.log('[Auth] Using cached profile after timeout, role:', cached.role); return cached; }
     return null;
   }
 }
