@@ -1,9 +1,13 @@
 [build]
   publish = "."
+  command = "npm install"
 
 [functions]
   directory = "netlify/functions"
-  node_bundler = "zisi"
+  node_bundler = "esbuild"
 
 [functions.customer-intel]
+  timeout = 26
+
+[functions.parse-quote]
   timeout = 26

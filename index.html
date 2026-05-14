@@ -1736,26 +1736,48 @@ function renderAssetRows() {
 // ── PDF Quote Import ──────────────────────────────────────────────────────
 async function importQuotePDF(input) {
   const file = input.files[0];
-  input.value = '';           // allow re-uploading the same file
+  input.value = '';
   if (!file) return;
 
-  const port = window.__SERVER_PORT__ || 8765;
-  const btn  = document.querySelector('[onclick*="quoteFileInput"]');
-
-  // Show loading state
+  const btn      = document.querySelector('[onclick*="quoteFileInput"]');
   const origText = btn.innerHTML;
   btn.innerHTML  = '⏳ Parsing…';
   btn.disabled   = true;
 
   try {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const resp = await fetch(`http://localhost:${port}/api/parse-quote`, {
-      method: 'POST',
-      body: formData,
+    // Read file as base64
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = e => resolve(e.target.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
     });
-    const data = await resp.json();
+
+    // Try Netlify Function first; fall back to local server.py
+    const netlifyUrl = IS_SERVER
+      ? '/api/parse-quote'
+      : '/.netlify/functions/parse-quote';
+    const localUrl   = `http://localhost:${window.__SERVER_PORT__ || 8765}/api/parse-quote`;
+
+    let data;
+    try {
+      const resp = await fetch(netlifyUrl, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ file: base64 }),
+      });
+      data = await resp.json();
+    } catch (netErr) {
+      // Netlify function unavailable (local dev without internet?) — try server.py
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const resp2 = await fetch(localUrl, { method: 'POST', body: formData });
+        data = await resp2.json();
+      } catch {
+        throw new Error('Could not reach parsing service. On desktop, make sure server.py is running.');
+      }
+    }
 
     if (data.error) {
       alert(`❌ Could not parse PDF:\n\n${data.error}`);
@@ -1768,7 +1790,6 @@ async function importQuotePDF(input) {
       return;
     }
 
-    // Replace asset rows with all imported lines (no limit)
     assetRows = lines.map(l => ({
       qty:        l.qty,
       price:      l.unitPrice,
@@ -1785,11 +1806,7 @@ async function importQuotePDF(input) {
     alert(`✅ Imported ${lines.length} lines from ${fmt} quote.\n\nPlease review asset types and OEM before calculating.`);
 
   } catch (err) {
-    if (err.message && err.message.includes('fetch')) {
-      alert('❌ Server not reachable.\n\nMake sure server.py is running to use PDF import.');
-    } else {
-      alert(`❌ Import failed: ${err.message}`);
-    }
+    alert(`❌ Import failed: ${err.message}`);
   } finally {
     btn.innerHTML = origText;
     btn.disabled  = false;
