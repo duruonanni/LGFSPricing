@@ -11,3 +11,6 @@
 
 [functions.parse-quote]
   timeout = 26
+
+[functions.fetch-rates]
+  timeout = 26

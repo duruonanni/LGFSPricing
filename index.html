@@ -2539,6 +2539,8 @@ let fetchingRates = false;
 
 // Detect if running via local server
 const IS_SERVER = window.location.protocol === 'http:' && window.location.hostname === 'localhost';
+// Netlify-hosted or local server — both support live rate fetching
+const IS_NETLIFY = window.location.hostname.includes('netlify.app') || window.location.protocol === 'https:';
 
 async function refreshAllRates() {
   if (fetchingRates) return;
@@ -2548,10 +2550,13 @@ async function refreshAllRates() {
 
   try {
     if (IS_SERVER) {
-      // Running via server.py — use the /api/rates endpoint (no CORS issues)
+      // Running via server.py locally — use /api/rates proxy
       await fetchRatesFromServer();
+    } else if (IS_NETLIFY) {
+      // Running on Netlify — use serverless function proxy
+      await fetchRatesFromNetlify();
     } else {
-      // Running from file:// — show instructions
+      // Local file:// — no proxy available
       showServerInstructions();
       return;
     }
@@ -2561,49 +2566,61 @@ async function refreshAllRates() {
   }
 }
 
+async function fetchRatesFromNetlify() {
+  updateStatus('Fetching live bond rates via Netlify… (this may take ~20s)', 'stale');
+  try {
+    const resp = await fetch('/.netlify/functions/fetch-rates', { signal: AbortSignal.timeout(25000) });
+    if (!resp.ok) throw new Error(`Function error ${resp.status}`);
+    const data = await resp.json();
+    await _applyRatesData(data);
+  } catch (err) {
+    updateStatus('Failed to fetch live rates: ' + err.message, 'stale');
+  }
+}
+
+// ── Shared: apply fetched rates data to COUNTRIES array ───────
+async function _applyRatesData(data) {
+  let successCount = 0, failCount = 0;
+  const fetchedRates = {};
+  if (data.rates) {
+    for (const [name, rates] of Object.entries(data.rates)) {
+      const country = COUNTRIES.find(c => c.name === name);
+      if (country && rates.r3 !== null && rates.r5 !== null) {
+        country.r3 = rates.r3;
+        country.r5 = rates.r5;
+        updateCountryRow(country);
+        fetchedRates[name] = { r3: rates.r3, r5: rates.r5 };
+        successCount++;
+      } else {
+        failCount++;
+      }
+    }
+  }
+  try {
+    const anomalies = checkBondRateAnomalies(fetchedRates);
+    recordBondRateFetch(fetchedRates);
+    showBondRateAlerts(anomalies);
+  } catch(e) { console.warn('Bond rate anomaly check failed:', e); }
+
+  const cache = { timestamp: Date.now(), rates: COUNTRIES.map(c => ({ name: c.name, r3: c.r3, r5: c.r5 })) };
+  try { localStorage.setItem('lgfs_rates_cache', JSON.stringify(cache)); } catch(e) {}
+
+  const ts = new Date().toLocaleString();
+  document.getElementById('rateTimestamp').textContent = `Updated: ${ts}`;
+  document.getElementById('ratesAge').textContent = `Live rates — ${ts}`;
+  updateStatus(`✓ Updated ${successCount} countries (${failCount} not available). Click "Export for Distribution" to generate a shareable HTML file.`, 'live');
+  renderCountriesTable();
+  singleCalc();
+  globalCalc();
+}
+
 async function fetchRatesFromServer() {
   updateStatus('Contacting local server for bond rates… (this may take ~30s)', 'stale');
   try {
-    const resp = await fetch('/api/rates', {signal: AbortSignal.timeout(120000)});
+    const resp = await fetch('/api/rates', { signal: AbortSignal.timeout(120000) });
     if (!resp.ok) throw new Error(`Server error ${resp.status}`);
     const data = await resp.json();
-
-    let successCount = 0, failCount = 0;
-    const fetchedRates = {}; // for anomaly detection
-    if (data.rates) {
-      for (const [name, rates] of Object.entries(data.rates)) {
-        const country = COUNTRIES.find(c => c.name === name);
-        if (country && rates.r3 !== null && rates.r5 !== null) {
-          country.r3 = rates.r3;
-          country.r5 = rates.r5;
-          updateCountryRow(country);
-          fetchedRates[name] = {r3: rates.r3, r5: rates.r5};
-          successCount++;
-        } else {
-          failCount++;
-        }
-      }
-    }
-
-    // ── Bond rate anomaly detection ──
-    try {
-      const anomalies = checkBondRateAnomalies(fetchedRates);
-      recordBondRateFetch(fetchedRates);
-      showBondRateAlerts(anomalies);
-    } catch(e) { console.warn('Bond rate anomaly check failed:', e); }
-
-    // Cache results
-    const cache = {timestamp: Date.now(), rates: COUNTRIES.map(c => ({name:c.name, r3:c.r3, r5:c.r5}))};
-    try { localStorage.setItem('lgfs_rates_cache', JSON.stringify(cache)); } catch(e) {}
-
-    const ts = new Date().toLocaleString();
-    document.getElementById('rateTimestamp').textContent = `Updated: ${ts}`;
-    document.getElementById('ratesAge').textContent = `Live rates — ${ts}`;
-    updateStatus(`✓ Updated ${successCount} countries (${failCount} not available). Click "Export for Distribution" to generate a shareable HTML file.`, 'live');
-    renderCountriesTable();
-    singleCalc();
-    globalCalc();
-
+    await _applyRatesData(data);
   } catch (err) {
     updateStatus('Failed to fetch from local server: ' + err.message, 'stale');
   }
