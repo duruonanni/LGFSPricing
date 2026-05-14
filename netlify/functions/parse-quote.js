@@ -2,7 +2,6 @@
  * Netlify Function: parse-quote
  * Parses Lenovo BRPAS or Special Bid PDF quote and returns asset lines.
  * Accepts: POST { file: "<base64 pdf>" }
- * Returns: { lines: [...], format: "brpas"|"special_bid" }
  */
 
 const pdfParse = require('pdf-parse');
@@ -20,140 +19,155 @@ function jsonResponse(body, statusCode) {
   };
 }
 
-// ── Asset type classifier ─────────────────────────────────────
+// ── Asset classifier ──────────────────────────────────────────
 const ASSET_RULES = [
-  [['notebook', 'nb ', 'thinkpad', 'laptop'],          'Laptop / Desktop / AIO'],
-  [['workstation', 'thinkstation'],                    'Workstation'],
-  [['thinkvision', 'monitor', 'display'],              'Monitors'],
-  [['tablet', 'x12det', 'x1 tablet'],                  'Tablets'],
-  [['iphone', 'ipad'],                                 'Apple iPhones'],
-  [['motorola', 'moto '],                              'Motorola Mobiles'],
-  [['server', 'thinksystem', 'thinkagile'],            'Servers'],
-  [['storage', 'nas ', 'san '],                        'Storage'],
-  [['switch', 'router', 'network', 'ethernet adapter'],'Networking'],
-  [['desktop', 'thinkcenter', 'tc ', ' aio'],          'Laptop / Desktop / AIO'],
+  [['notebook','nb ','thinkpad','laptop'],         'Laptop / Desktop / AIO'],
+  [['workstation','thinkstation'],                 'Workstation'],
+  [['thinkvision','monitor','display'],            'Monitors'],
+  [['tablet','x12det','x1 tablet'],               'Tablets'],
+  [['iphone','ipad'],                             'Apple iPhones'],
+  [['motorola','moto '],                          'Motorola Mobiles'],
+  [['server','thinksystem','thinkagile'],         'Servers'],
+  [['storage','nas ','san '],                     'Storage'],
+  [['switch','router','network','ethernet adapter'],'Networking'],
+  [['desktop','thinkcenter','tc ',' aio'],        'Laptop / Desktop / AIO'],
 ];
 const SERVICE_KEYWORDS = [
   'warranty','premier support','accidental damage','cfs ','managed ',
-  'autopilot','install service','mice_bo','case_bo','mouse','backpack',
-  'bag','asset tag','electric test','handling charge','bios settings',
-  'ready to provision','white glove',
+  'autopilot','install service','mouse','backpack','bag','asset tag',
+  'electric test','handling charge','bios settings','ready to provision',
+  'white glove','mice_bo','case_bo',
 ];
-
-function classify(desc) {
-  const d = (desc || '').toLowerCase();
-  for (const kw of SERVICE_KEYWORDS) {
-    if (d.includes(kw)) return 'Peripherals / Soft Cost / Services';
-  }
-  for (const [kws, atype] of ASSET_RULES) {
-    if (kws.some(k => d.includes(k))) return atype;
-  }
+function classify(text) {
+  const t = (text || '').toLowerCase();
+  for (const kw of SERVICE_KEYWORDS) if (t.includes(kw)) return 'Peripherals / Soft Cost / Services';
+  for (const [kws, atype] of ASSET_RULES) if (kws.some(k => t.includes(k))) return atype;
   return 'Peripherals / Soft Cost / Services';
 }
-
-function cleanPrice(raw) {
-  if (!raw) return 0;
-  const s = String(raw).replace(/[A-Z$€£¥,\s]/g, '');
-  const n = parseFloat(s);
+function cleanPrice(s) {
+  const n = parseFloat(String(s || '').replace(/[A-Z$€£¥,\s]/g, ''));
   return isNaN(n) ? 0 : n;
 }
-
-function isHeaderLine(line) {
-  const l = line.toLowerCase();
-  return ['part number','product code','description','item no'].some(h => l.includes(h));
+function isHeaderLine(l) {
+  const t = l.toLowerCase();
+  return ['part number','product code','description','item no','unit price','total price'].some(h => t.includes(h));
 }
 
+// ── Core parser – handles pdf-parse column-concatenated output ────────────
 function parseQuoteText(fullText) {
-  const results   = [];
-  const seenKeys  = new Set();
+  const results  = [];
+  const seenKeys = new Set();
 
-  function addResult(partNum, description, qty, price) {
+  function addLine(partNum, description, qty, price) {
     if (!partNum || qty <= 0 || price <= 0) return;
-    if ((description + partNum).toLowerCase().includes('grand total')) return;
-    const key = `${partNum}|${qty}|${Math.round(price * 100)}`;
-    if (seenKeys.has(key)) return;
-    seenKeys.add(key);
+    if (/(grand total)/i.test(partNum + description)) return;
+    const k = `${partNum}|${qty}|${Math.round(price * 100)}`;
+    if (seenKeys.has(k)) return;
+    seenKeys.add(k);
     results.push({
-      partNumber:  partNum,
+      partNumber:  partNum.slice(0, 14),
       description: description || partNum,
       qty,
       unitPrice:   price,
-      assetType:   classify(description),
+      assetType:   classify(partNum + ' ' + description),
       oem:         'Lenovo',
     });
   }
 
-  // Detect format
-  let fmt = 'brpas';
-  if (/Product and\/or Service Selection/i.test(fullText)) fmt = 'special_bid';
-
   // Narrow to product section
-  const secRe  = /PRODUCT AND SERVICE DETAILS|Product and\/or Service Selection/i;
-  const endRe  = /CONFIGURATION DETAILS|Grand Total|TERMS AND CONDITIONS/i;
-  const secM   = secRe.exec(fullText);
-  let section  = fullText;
-  if (secM) {
-    const after = fullText.slice(secM.index + secM[0].length);
-    const endM  = endRe.exec(after);
-    section = endM ? after.slice(0, endM.index) : after;
+  const secM = /PRODUCT AND SERVICE DETAILS|Product and\/or Service Selection/i.exec(fullText);
+  if (!secM) return results;
+  const after = fullText.slice(secM.index + secM[0].length);
+  const endM  = /Grand Total|CONFIGURATION DETAILS|TERMS AND CONDITIONS/i.exec(after);
+  const section = endM ? after.slice(0, endM.index) : after;
+
+  // Tail pattern: <qty_integer><price1.xx><price2.xx><price3.xx> at end of line
+  // Handles prices with commas (e.g. 2,626.30) and without
+  const TAIL = /(\d+)(\d[\d,]*\.\d{2})(\d[\d,]*\.\d{2})(\d[\d,]*\.\d{2})$/;
+
+  // Start-of-item: <1-2 digit line#><ALL_CAPS_DIGITS part code ≥8 chars>
+  const ITEM_START = /^(\d{1,2})([A-Z0-9]{8,14})/;
+  // Pure sub-reference code (to skip): all-caps-digits, no spaces, 5-14 chars
+  const SUB_CODE = /^[A-Z0-9]{5,14}$/;
+
+  const lines        = section.split('\n').map(l => l.trim()).filter(Boolean);
+  let pendingPart    = null;
+  let pendingDescs   = [];
+
+  function flush(qty, price) {
+    if (pendingPart && qty > 0 && price > 0) {
+      addLine(pendingPart, pendingDescs.join(' ').trim(), qty, price);
+    }
+    pendingPart  = null;
+    pendingDescs = [];
   }
 
-  // Pattern A: <line#>  <PARTCODE>  <qty>  <price>
-  const patPlain  = /^\s*\d{1,3}\s+([A-Z0-9]{6,14})\s+(\d+)\s+([A-Z]{0,3}[\d,]+\.\d{2})\b/;
-  // Pattern B: <line#>  <PARTCODE>  <desc>  <qty>  <price>  <price>
-  const patInline = /^\s*\d{1,3}\s+([A-Z0-9]{6,14})\s+(.+?)\s+(\d+)\s+[A-Z]{0,3}([\d,]+\.\d{2})\s+[A-Z]{0,3}[\d,]+\.\d{2}/;
-
-  const lines      = section.split('\n');
-  let pendingDesc  = [];
-  let afterRow     = false;
-
   for (const line of lines) {
-    // Try Pattern A
-    let m = patPlain.exec(line);
-    if (!m) {
-      // Try Pattern B
-      const m2 = patInline.exec(line);
-      if (m2) {
-        const [, part, inlineDesc, qtyS, priceS] = m2;
-        const qty   = parseInt(qtyS, 10);
-        const price = cleanPrice(priceS);
-        const key   = `${part}|${qty}|${Math.round(price * 100)}`;
-        if (!seenKeys.has(key)) {
-          const before = pendingDesc.join(' ').trim();
-          const desc   = before ? `${before} ${inlineDesc}`.trim() : inlineDesc;
-          addResult(part, desc, qty, price);
+    if (/grand total/i.test(line)) break;
+    if (isHeaderLine(line)) continue;
+
+    const tailM = TAIL.exec(line);
+
+    if (tailM) {
+      const qty    = parseInt(tailM[1], 10);
+      const price  = cleanPrice(tailM[2]);
+      const prefix = line.slice(0, line.length - tailM[0].length).trim();
+
+      const itemM = ITEM_START.exec(prefix);
+      if (itemM) {
+        // ── Single-line item: line# + partCode + description all on one line ──
+        flush(0, 0);  // commit any previous pending (no prices = skip)
+        const rawCode  = itemM[2];                    // greedy [A-Z0-9]{8,14}
+        const afterCode = prefix.slice(itemM[0].length).trim(); // remaining text = description
+
+        // Part code may have absorbed start of description (both are uppercase).
+        // Heuristic: if rawCode > 11 chars, check if last chars form a word start
+        // by trying 10-11 char split. Else use rawCode as-is.
+        let partNum = rawCode;
+        let desc    = afterCode;
+        if (rawCode.length > 11) {
+          // Try to split at 10 chars
+          partNum = rawCode.slice(0, 10);
+          desc    = (rawCode.slice(10) + ' ' + afterCode).trim();
         }
-        pendingDesc = [];
-        afterRow    = true;
-        continue;
-      }
-      // Not a data row
-      const s = line.trim();
-      if (afterRow) {
-        afterRow    = false;
-        pendingDesc = [];
-      } else if (s && !/^[\d,.\s%()[\]\-AUD]+$/.test(s) && !isHeaderLine(s)) {
-        pendingDesc.push(s);
-      } else if (!s) {
-        pendingDesc = [];
+        addLine(partNum, desc, qty, price);
+
+      } else if (prefix === '' && pendingPart) {
+        // ── Prices-only line for a multi-line item ──
+        flush(qty, price);
+
+      } else if (pendingPart) {
+        // Stray prices line — also check as a prices-only flush
+        flush(qty, price);
       }
       continue;
     }
 
-    // Pattern A matched
-    const [, part, qtyS, priceS] = m;
-    const qty   = parseInt(qtyS, 10);
-    const price = cleanPrice(priceS);
-    const key   = `${part}|${qty}|${Math.round(price * 100)}`;
-    if (!seenKeys.has(key)) {
-      const desc = pendingDesc.join(' ').replace(/\s+/g, ' ').trim();
-      addResult(part, desc, qty, price);
+    // ── No price tail — may be start of multi-line item or description ──
+    const itemStartM = ITEM_START.exec(line);
+    if (itemStartM) {
+      const rest = line.slice(itemStartM[0].length).trim();
+      if (!rest || SUB_CODE.test(rest)) {
+        // Pure item start: line# + partCode, description follows on next lines
+        flush(0, 0);
+        pendingPart  = itemStartM[2];
+        pendingDescs = [];
+      } else {
+        // Has description inline but no prices yet (unusual; accumulate)
+        flush(0, 0);
+        pendingPart  = itemStartM[2];
+        pendingDescs = rest ? [rest] : [];
+      }
+    } else if (pendingPart) {
+      if (SUB_CODE.test(line)) {
+        // Skip sub-reference codes (e.g. "21WQCT01" after part "21WQCT01WW")
+      } else {
+        pendingDescs.push(line);
+      }
     }
-    pendingDesc = [];
-    afterRow    = true;
   }
 
-  return { results, fmt };
+  return results;
 }
 
 exports.handler = async (event) => {
@@ -162,31 +176,31 @@ exports.handler = async (event) => {
   }
 
   try {
-    const body    = JSON.parse(event.body || '{}');
-    const b64     = body.file || '';
+    const body = JSON.parse(event.body || '{}');
+    const b64  = body.file || '';
     if (!b64) return jsonResponse({ error: 'Missing file (base64)' }, 400);
 
-    const buffer  = Buffer.from(b64, 'base64');
-    const parsed  = await pdfParse(buffer);
-    const text    = parsed.text || '';
+    const buf    = Buffer.from(b64, 'base64');
+    const parsed = await pdfParse(buf);
+    const text   = parsed.text || '';
 
     if (!text.trim()) {
       return jsonResponse({ error: 'Could not extract text from PDF.' }, 422);
     }
 
-    const { results, fmt } = parseQuoteText(text);
+    const lines = parseQuoteText(text);
 
-    if (!results.length) {
-      // Return extracted text for debugging (first 3000 chars of product section)
-      const secM2  = /PRODUCT AND SERVICE DETAILS|Product and\/or Service Selection/i.exec(text);
-      const sample = secM2 ? text.slice(secM2.index, secM2.index + 3000) : text.slice(0, 3000);
+    if (!lines.length) {
+      const secM = /PRODUCT AND SERVICE DETAILS|Product and\/or Service Selection/i.exec(text);
+      const sample = secM ? text.slice(secM.index, secM.index + 3000) : text.slice(0, 3000);
       return jsonResponse({
         error: 'No product lines found. Supported formats: Lenovo BRPAS quote and Special Bid.',
         _debug_text: sample,
       }, 422);
     }
 
-    return jsonResponse({ success: true, format: fmt, lines: results });
+    const fmt = /Product and\/or Service Selection/i.test(text) ? 'special_bid' : 'brpas';
+    return jsonResponse({ success: true, format: fmt, lines });
 
   } catch (err) {
     return jsonResponse({ error: String(err.message || err) }, 500);
