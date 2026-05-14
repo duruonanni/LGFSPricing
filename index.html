@@ -1014,12 +1014,6 @@ header h1 span{opacity:.7;font-weight:400;font-size:14px;margin-left:8px}
     <div class="card-body" id="g-intel-body"></div>
   </div>
 
-  <!-- Global Approval Warnings -->
-  <div id="g-approvals" class="card mb-3" style="display:none;border-color:#fed7aa">
-    <div class="card-header" style="background:#fff7ed;color:#92400e">⚠️ Approval Required</div>
-    <div class="card-body" id="g-approval-list" style="padding:12px 16px"></div>
-  </div>
-
   <!-- Country rows -->
   <div class="card">
     <div class="card-header justify-between">
@@ -1027,6 +1021,12 @@ header h1 span{opacity:.7;font-weight:400;font-size:14px;margin-left:8px}
       <button class="btn btn-sm btn-success" onclick="addGlobalCountry()">+ Add Country</button>
     </div>
     <div id="globalCountryList" style="padding:8px"></div>
+  </div>
+
+  <!-- Global Approval Warnings (bottom) -->
+  <div id="g-approvals" class="card" style="display:none;border-color:#fed7aa;margin-top:16px">
+    <div class="card-header" style="background:#fff7ed;color:#92400e">⚠️ Approval Required</div>
+    <div class="card-body" id="g-approval-list" style="padding:12px 16px"></div>
   </div>
 
   <!-- Submit for Approval bar (shown when approvals required) -->
@@ -1976,12 +1976,16 @@ function singleCalc() {
 }
 
 function buildApprovalChain(triggers) {
-  // triggers: { opexLow, marginLow, gcrLow, rvDiff }
+  // DoA rules:
+  //   LGFS Opex low    → Pricer
+  //   LGFS Margin low  → Pricer → Geo Lead
+  //   GCR low / RV diff → Pricer
+  //   RV diff > 2%     → + RV Committee
   const any = triggers.opexLow || triggers.marginLow || triggers.gcrLow || triggers.rvDiff > 0;
   if (!any) return [];
   const chain = ['Pricer'];
-  if (triggers.opexLow)    chain.push('Geo Lead');
-  if (triggers.rvDiff > 0.02) chain.push('RV Committee');
+  if (triggers.marginLow)      chain.push('Geo Lead');      // Margin needs Geo Lead after Pricer
+  if (triggers.rvDiff > 0.02)  chain.push('RV Committee');
   return chain;
 }
 
@@ -2444,21 +2448,18 @@ function confirmSubmitGlobalApproval() {
     },
   };
 
+  document.querySelector('.apr-modal-overlay')?.remove();
+
+  // Save to Supabase
+  sbSaveNewApproval(req).then(() => renderApprovalRequests()).catch(console.error);
+
+  // Local fallback
   const arr = loadApprovalRequests();
   arr.push(req);
   saveApprovalRequests(arr);
 
-  document.querySelector('.apr-modal-overlay')?.remove();
-
-  const btn = document.getElementById('gSubmitBtn');
-  if (btn) {
-    const orig = btn.innerHTML;
-    btn.innerHTML = '✓ Submitted!';
-    btn.style.background = 'var(--green)';
-    setTimeout(() => { btn.innerHTML = orig; btn.style.background = '#f59e0b'; }, 2000);
-  }
-
-  showTab('history');
+  // Show success and reset
+  showApprovalSuccessAndReset('global');
 }
 
 // ============================================================
@@ -3837,6 +3838,40 @@ async function sbUpdateApproval(id, updates) {
   if (error) console.error('sbUpdateApproval error:', error.message);
 }
 
+// ── Approval success toast + reset ───────────────────────────
+function showApprovalSuccessAndReset(type) {
+  // Show success overlay
+  const toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center';
+  toast.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:32px 40px;max-width:420px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+      <div style="font-size:48px;margin-bottom:12px">✅</div>
+      <div style="font-size:20px;font-weight:700;color:#065f46;margin-bottom:8px">Submitted Successfully</div>
+      <div style="font-size:14px;color:#374151;line-height:1.6">
+        Your approval request has been submitted.<br>
+        The approval team will review your request shortly.
+      </div>
+    </div>`;
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.remove();
+    // Reset the relevant page
+    if (type === 'single') {
+      // Reset Single Country Deal form
+      document.getElementById('s-customer')?.value !== undefined && (document.getElementById('s-customer').value = '');
+      assetRows = [{ qty: 1, price: 0, assetType: 'Laptop / Desktop / AIO', oem: 'Lenovo', subsidyPct: 0, nonStdRV: '' }];
+      renderAssetRows();
+      singleCalc();
+    } else if (type === 'global') {
+      // Reset Global Deal Sheet
+      globalCountries = [];
+      renderGlobalCountries();
+      globalCalc();
+    }
+  }, 2500);
+}
+
 // ── Submit a deal for approval ────────────────────────────────
 function submitForApproval() {
   const r = lastCalcResult;
@@ -3910,7 +3945,7 @@ function confirmSubmitApproval() {
 
   document.querySelector('.apr-modal-overlay')?.remove();
 
-  // Save to Supabase (async, fire-and-forget for UX)
+  // Save to Supabase (async)
   sbSaveNewApproval(req).then(() => renderApprovalRequests()).catch(console.error);
 
   // Also save locally as fallback
@@ -3921,16 +3956,8 @@ function confirmSubmitApproval() {
   // Auto-save deal to history
   try { saveDeal({ silent: true }); } catch(e) {}
 
-  // Flash confirmation
-  const btn = document.querySelector('[onclick="submitForApproval()"]');
-  if (btn) {
-    const orig = btn.innerHTML;
-    btn.innerHTML = '✓ Submitted!';
-    btn.style.background = 'var(--green)';
-    setTimeout(() => { btn.innerHTML = orig; btn.style.background = '#f59e0b'; }, 2000);
-  }
-
-  showTab('history');
+  // Show success and reset
+  showApprovalSuccessAndReset('single');
 }
 
 // ── Approval action (approve / reject) ───────────────────────
@@ -3941,7 +3968,7 @@ function showApprovalModal(reqId, action) {
 
   const role      = getCurrentUser()?.role;
   const nextLevel = getNextLevel(req);
-  if (nextLevel && role !== nextLevel) {
+  if (nextLevel && role !== nextLevel && role !== 'Admin') {
     alert(`This step requires ${nextLevel} approval. You are logged in as ${role}.`);
     return;
   }
@@ -4053,7 +4080,10 @@ async function renderApprovalRequests() {
     const d         = req.deal;
     const role      = getCurrentUser()?.role;
     const nextLevel = getNextLevel(req);
-    const canActNow = req.status === 'pending' && ['Pricer','Geo Lead','RV Committee'].includes(role) && role === nextLevel;
+    const canActNow = req.status === 'pending' && (
+      role === 'Admin' ||
+      (['Pricer','Geo Lead','RV Committee'].includes(role) && role === nextLevel)
+    );
 
     // Chain progress display
     const chainHTML = (req.requiredLevels || []).map((level, i) => {
