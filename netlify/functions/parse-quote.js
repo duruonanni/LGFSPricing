@@ -109,8 +109,26 @@ function parseQuoteText(fullText) {
     const tailM = TAIL.exec(line);
 
     if (tailM) {
-      const qty    = parseInt(tailM[1], 10);
-      const price  = cleanPrice(tailM[2]);
+      let qty    = parseInt(tailM[1], 10);
+      let price  = cleanPrice(tailM[2]);
+      // Validate qty × price ≈ total_excl (tailM[3]).
+      // If off, the regex absorbed the leading digit of price into qty — restore it.
+      const totalExcl = cleanPrice(tailM[3]);
+      if (qty > 0 && price > 0 && totalExcl > 0) {
+        const expected = qty * price;
+        const tol = Math.max(1, totalExcl * 0.02);
+        if (Math.abs(expected - totalExcl) > tol) {
+          // Try: move last digit of qty to front of price string
+          const qtyStr   = tailM[1];
+          const priceStr = tailM[2];
+          const fixedQty   = parseInt(qtyStr.slice(0, -1) || '0', 10);
+          const fixedPrice = cleanPrice(qtyStr.slice(-1) + priceStr);
+          if (fixedQty > 0 && Math.abs(fixedQty * fixedPrice - totalExcl) < tol) {
+            qty   = fixedQty;
+            price = fixedPrice;
+          }
+        }
+      }
       const prefix = line.slice(0, line.length - tailM[0].length).trim();
 
       const itemM = ITEM_START.exec(prefix);

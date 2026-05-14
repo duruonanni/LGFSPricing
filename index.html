@@ -3776,12 +3776,65 @@ let histSortCol     = 'savedAt';
 let histSortAsc     = false;
 let _pendingApprovalLevels = []; // set by checkApprovals, read by submitForApproval
 
-// ── Approval Request Storage ─────────────────────────────────
+// ── Approval Request Storage (Supabase + localStorage fallback) ──────────
 function loadApprovalRequests() {
   try { return JSON.parse(localStorage.getItem(APPROVAL_KEY) || '[]'); } catch(e) { return []; }
 }
 function saveApprovalRequests(arr) {
   try { localStorage.setItem(APPROVAL_KEY, JSON.stringify(arr)); } catch(e) {}
+}
+
+// Supabase-based approval CRUD
+async function sbLoadApprovals() {
+  if (!_supabase) return loadApprovalRequests();
+  const { data, error } = await _supabase
+    .from('approval_requests')
+    .select('*')
+    .order('submitted_at', { ascending: false });
+  if (error || !data) return loadApprovalRequests();
+  // Convert snake_case columns to camelCase for compatibility
+  return data.map(r => ({
+    id:             r.id,
+    submittedAt:    r.submitted_at,
+    submittedBy:    r.submitted_by,
+    submitterId:    r.submitter_id,
+    note:           r.note || '',
+    status:         r.status,
+    requiredLevels: r.required_levels || [],
+    reasons:        r.reasons || [],
+    decisions:      r.decisions || [],
+    deal:           r.deal || {},
+  }));
+}
+
+async function sbSaveNewApproval(req) {
+  if (!_supabase) { const arr = loadApprovalRequests(); arr.push(req); saveApprovalRequests(arr); return; }
+  const { error } = await _supabase.from('approval_requests').insert({
+    id:              req.id,
+    submitted_at:    req.submittedAt,
+    submitted_by:    req.submittedBy,
+    submitter_id:    getCurrentUser()?.id || null,
+    note:            req.note || null,
+    status:          req.status,
+    required_levels: req.requiredLevels,
+    reasons:         req.reasons,
+    decisions:       req.decisions,
+    deal:            req.deal,
+  });
+  if (error) { console.error('sbSaveNewApproval error:', error.message); }
+}
+
+async function sbUpdateApproval(id, updates) {
+  if (!_supabase) {
+    const arr = loadApprovalRequests().map(r => r.id === id ? { ...r, ...updates } : r);
+    saveApprovalRequests(arr); return;
+  }
+  const dbUpdates = {};
+  if (updates.status    !== undefined) dbUpdates.status     = updates.status;
+  if (updates.decisions !== undefined) dbUpdates.decisions  = updates.decisions;
+  dbUpdates.updated_at = new Date().toISOString();
+  const { error } = await _supabase.from('approval_requests').update(dbUpdates).eq('id', id);
+  if (error) console.error('sbUpdateApproval error:', error.message);
 }
 
 // ── Submit a deal for approval ────────────────────────────────
@@ -3855,14 +3908,18 @@ function confirmSubmitApproval() {
     },
   };
 
+  document.querySelector('.apr-modal-overlay')?.remove();
+
+  // Save to Supabase (async, fire-and-forget for UX)
+  sbSaveNewApproval(req).then(() => renderApprovalRequests()).catch(console.error);
+
+  // Also save locally as fallback
   const arr = loadApprovalRequests();
   arr.push(req);
   saveApprovalRequests(arr);
 
-  // Auto-save deal to history if not already saved
+  // Auto-save deal to history
   try { saveDeal({ silent: true }); } catch(e) {}
-
-  document.querySelector('.apr-modal-overlay')?.remove();
 
   // Flash confirmation
   const btn = document.querySelector('[onclick="submitForApproval()"]');
@@ -3873,7 +3930,6 @@ function confirmSubmitApproval() {
     setTimeout(() => { btn.innerHTML = orig; btn.style.background = '#f59e0b'; }, 2000);
   }
 
-  // Switch to History tab to show the request
   showTab('history');
 }
 
@@ -3927,42 +3983,51 @@ function getNextLevel(req) {
   return (req.requiredLevels || []).find(l => !approvedLevels.has(l)) || null;
 }
 
-function processApproval(reqId, action) {
+async function processApproval(reqId, action) {
   const approver = (document.getElementById('apr-approver-name')?.value || '').trim();
   const comment  = (document.getElementById('apr-approver-comment')?.value || '').trim();
   if (!approver) { alert('Please enter your name.'); return; }
   if (action === 'rejected' && !comment) { alert('Please provide a reason for rejection.'); return; }
 
-  const arr = loadApprovalRequests();
-  const req = arr.find(r => r.id === reqId);
+  // Load latest from Supabase first, fallback to localStorage
+  const allReqs = await sbLoadApprovals();
+  const req = allReqs.find(r => r.id === reqId);
   if (!req) return;
 
   const myLevel = getCurrentUser()?.role;
-  req.decisions.push({ level: myLevel, approver, comment, action, timestamp: new Date().toISOString() });
+  const newDecisions = [...(req.decisions || []),
+    { level: myLevel, approver, comment, action, timestamp: new Date().toISOString() }];
 
+  let newStatus;
   if (action === 'rejected') {
-    req.status = 'rejected';
+    newStatus = 'rejected';
   } else {
-    // Check if all required levels have approved
-    const approvedSet = new Set(req.decisions.filter(d => d.action === 'approved').map(d => d.level));
-    const allApproved = (req.requiredLevels || []).every(l => approvedSet.has(l));
-    req.status = allApproved ? 'approved' : 'pending';
+    const approvedSet = new Set(newDecisions.filter(d => d.action === 'approved').map(d => d.level));
+    newStatus = (req.requiredLevels || []).every(l => approvedSet.has(l)) ? 'approved' : 'pending';
   }
 
+  // Update Supabase
+  await sbUpdateApproval(reqId, { status: newStatus, decisions: newDecisions });
+
+  // Update localStorage fallback
+  const arr = loadApprovalRequests().map(r => r.id === reqId
+    ? { ...r, status: newStatus, decisions: newDecisions } : r);
   saveApprovalRequests(arr);
+
   document.querySelector('.apr-modal-overlay')?.remove();
   renderApprovalRequests();
 }
 
 // ── Render approval requests ──────────────────────────────────
-function renderApprovalRequests() {
+async function renderApprovalRequests() {
   const panel   = document.getElementById('apr-panel');
   const list    = document.getElementById('apr-list');
   const badge   = document.getElementById('apr-pending-badge');
   const filter  = document.getElementById('apr-filter')?.value || 'all';
   if (!panel || !list) return;
 
-  let arr = loadApprovalRequests();
+  // Load from Supabase; fall back to localStorage
+  let arr = await sbLoadApprovals();
   const pendingCount = arr.filter(r => r.status === 'pending').length;
 
   // Badge
