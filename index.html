@@ -1780,6 +1780,7 @@ async function importQuotePDF(input) {
     }
 
     if (data.error) {
+      if (data._debug_text) console.log('[PDF debug text]\n', data._debug_text);
       alert(`❌ Could not parse PDF:\n\n${data.error}`);
       return;
     }

@@ -177,8 +177,12 @@ exports.handler = async (event) => {
     const { results, fmt } = parseQuoteText(text);
 
     if (!results.length) {
+      // Return extracted text for debugging (first 3000 chars of product section)
+      const secM2  = /PRODUCT AND SERVICE DETAILS|Product and\/or Service Selection/i.exec(text);
+      const sample = secM2 ? text.slice(secM2.index, secM2.index + 3000) : text.slice(0, 3000);
       return jsonResponse({
         error: 'No product lines found. Supported formats: Lenovo BRPAS quote and Special Bid.',
+        _debug_text: sample,
       }, 422);
     }
 
