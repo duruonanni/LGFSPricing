@@ -2011,6 +2011,62 @@ function buildApprovalReasons(triggers) {
   return reasons;
 }
 
+// ── Payment schedule helpers ───────────────────────────────────
+function leaseStartDate() {
+  // 1st of next month from today
+  const t = new Date();
+  return new Date(t.getFullYear(), t.getMonth() + 1, 1);
+}
+
+function generatePaymentSchedule(term, frequency, timing, pmtAmount) {
+  const start = leaseStartDate();
+  const pmtsPerYear  = (PMT_PROFILES[frequency] || PMT_PROFILES['Monthly']).pmtsPerYear;
+  const monthsPerPmt = 12 / pmtsPerYear;
+  const numPmts      = Math.round(term * pmtsPerYear / 12);
+  const fmt = d => d.toLocaleDateString('en-GB', { year:'numeric', month:'short', day:'numeric' });
+  return Array.from({ length: numPmts }, (_, i) => {
+    const offset = timing === 'advance' ? i : i + 1;
+    const d = new Date(start.getFullYear(), start.getMonth() + Math.round(offset * monthsPerPmt), 1);
+    return { n: i + 1, date: fmt(d), amount: pmtAmount };
+  });
+}
+
+function paymentScheduleHTML(term, frequency, timing, pmtAmount, currency) {
+  const schedule   = generatePaymentSchedule(term, frequency, timing, pmtAmount);
+  const fmtAmt     = v => v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const totalSum   = pmtAmount * schedule.length;
+  const cur        = currency ? `${currency} ` : '';
+  return `
+    <div style="margin-top:14px">
+      <div style="font-size:12px;font-weight:600;color:#1e3a8a;margin-bottom:6px">📅 Payment Schedule — ${schedule.length} payments starting ${schedule[0]?.date}</div>
+      <div style="max-height:220px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px">
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px">
+          <thead style="position:sticky;top:0;background:#f1f5f9;z-index:1">
+            <tr>
+              <th style="padding:5px 8px;text-align:center;border-bottom:1px solid #e2e8f0;width:36px">#</th>
+              <th style="padding:5px 8px;text-align:left;border-bottom:1px solid #e2e8f0">Date</th>
+              <th style="padding:5px 8px;text-align:right;border-bottom:1px solid #e2e8f0">Payment (${cur || 'local'})</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${schedule.map((p,i) => `
+              <tr style="${i%2===0?'background:#fff':'background:#f8fafc'}">
+                <td style="padding:4px 8px;text-align:center;color:#6b7280">${p.n}</td>
+                <td style="padding:4px 8px">${p.date}</td>
+                <td style="padding:4px 8px;text-align:right;font-variant-numeric:tabular-nums">${fmtAmt(p.amount)}</td>
+              </tr>`).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="background:#e0f2fe">
+              <td colspan="2" style="padding:5px 8px;font-weight:700;border-top:2px solid #bae6fd">Total (${schedule.length} pmts)</td>
+              <td style="padding:5px 8px;text-align:right;font-weight:700;border-top:2px solid #bae6fd">${fmtAmt(totalSum)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>`;
+}
+
 function checkApprovals(gcr, term, payTerms, opex, margin, annualVol, avgRV, rvDiff) {
   const triggers = {
     opexLow:   opex   < 0.008,
@@ -2309,6 +2365,9 @@ function globalCalc() {
       }
     });
 
+    // Store per-country totalPmt for snapshot
+    c._totalPmt = totalPmt;
+
     // Totals summary
     const blendedLRF = totalOEC > 0 ? totalPmt / totalOEC : 0;
     setEl(`gc-tot-oec-${ri}`, totalOEC > 0 ? num2(totalOEC) : '–');
@@ -2334,16 +2393,18 @@ function globalCalc() {
   });
 
   // Build global calc result snapshot for submit
-  let grandOEC = 0;
+  let grandOEC = 0, grandTotalPmt = 0;
   const countrySnapshots = globalCountries.map(c => {
     const cls = getFundingClass(c.country);
-    c.assets.forEach(a => { grandOEC += (a.qty||0)*(a.price||0); });
-    return { country: c.country, fundingClass: cls, assets: c.assets.map(a=>({...a})) };
+    const cOEC = (c.assets||[]).reduce((s,a)=>s+(a.qty||0)*(a.price||0),0);
+    grandOEC += cOEC;
+    grandTotalPmt += (c._totalPmt || 0);
+    return { country: c.country, fundingClass: cls, assets: c.assets.map(a=>({...a})), totalPmt: c._totalPmt || 0 };
   });
   lastGlobalCalcResult = {
     customer:  document.getElementById('g-customer')?.value?.trim() || '',
     term, frequency: freq, payTerms, opex: opexPct, margin: marginPct,
-    countries: countrySnapshots, grandOEC, maxRVDiff,
+    countries: countrySnapshots, grandOEC, grandTotalPmt, maxRVDiff,
   };
 
   checkGlobalApprovals(opexPct, marginPct, maxRVDiff);
@@ -2404,23 +2465,50 @@ function submitGlobalForApproval() {
     alert('Add countries and assets before submitting.');
     return;
   }
-  const repName = document.getElementById('g-repName')?.value || '';
+  const repName  = document.getElementById('g-repName')?.value || '';
+  const timingStr = document.getElementById('g-timing')?.value === '1' ? 'advance' : 'arrears';
+  // Per-country schedule table
+  const perCountryRows = r.countries.map(c => {
+    const cOEC = (c.assets||[]).reduce((s,a)=>s+(a.qty||0)*(a.price||0),0);
+    return `<tr style="border-bottom:1px solid #f1f5f9">
+      <td style="padding:4px 8px;font-weight:600">${c.country}</td>
+      <td style="padding:4px 8px;color:#6b7280">${c.fundingClass||'–'}</td>
+      <td style="padding:4px 8px;text-align:right">${cOEC.toLocaleString()}</td>
+      <td style="padding:4px 8px;text-align:right;font-weight:600">${(c.totalPmt||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+    </tr>`;
+  }).join('');
+  const schedHTML = (r.grandTotalPmt > 0)
+    ? paymentScheduleHTML(r.term, r.frequency, timingStr, r.grandTotalPmt)
+    : '';
   const overlay = document.createElement('div');
   overlay.className = 'apr-modal-overlay';
   overlay.innerHTML = `
-    <div class="apr-modal">
+    <div class="apr-modal" style="max-width:600px;max-height:88vh;overflow-y:auto">
       <h3>📤 Submit Global Deal for Approval</h3>
       <div style="font-size:13px;color:#374151;margin-bottom:12px">
         <strong>${r.customer || '(No customer)'}</strong> — ${r.countries.length} countr${r.countries.length>1?'ies':'y'} — Term ${r.term}M — OEC ${r.grandOEC.toLocaleString()}
       </div>
-      <div style="font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:8px 12px;margin-bottom:12px">
+      <div style="font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:8px 12px;margin-bottom:10px">
         <strong>Approval required:</strong><br>
         ${_globalPendingApprovalLevels.map(a=>`• ${a.level}: ${a.reason}`).join('<br>')}
       </div>
-      <label>Your Name (Submitter)</label>
-      <input id="gapr-submitter-name" type="text" placeholder="Enter your name" value="${repName}">
-      <label>Note (optional)</label>
-      <textarea id="gapr-submitter-note" placeholder="Context or justification for this request…"></textarea>
+      <div style="font-size:12px;font-weight:600;color:#1e3a8a;margin-bottom:4px">Per-Country Summary</div>
+      <table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-bottom:8px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden">
+        <thead><tr style="background:#f1f5f9">
+          <th style="padding:5px 8px;text-align:left;border-bottom:1px solid #e2e8f0">Country</th>
+          <th style="padding:5px 8px;text-align:left;border-bottom:1px solid #e2e8f0">Class</th>
+          <th style="padding:5px 8px;text-align:right;border-bottom:1px solid #e2e8f0">OEC</th>
+          <th style="padding:5px 8px;text-align:right;border-bottom:1px solid #e2e8f0">Per-Period Pmt</th>
+        </tr></thead>
+        <tbody>${perCountryRows}</tbody>
+      </table>
+      ${schedHTML}
+      <div style="margin-top:14px">
+        <label>Your Name (Submitter)</label>
+        <input id="gapr-submitter-name" type="text" placeholder="Enter your name" value="${repName}">
+        <label>Note (optional)</label>
+        <textarea id="gapr-submitter-note" placeholder="Context or justification for this request…"></textarea>
+      </div>
       <div class="apr-modal-btns">
         <button class="btn btn-sm btn-secondary" onclick="this.closest('.apr-modal-overlay').remove()">Cancel</button>
         <button class="btn btn-sm btn-primary" onclick="confirmSubmitGlobalApproval()" style="background:#f59e0b;border-color:#d97706">Submit →</button>
@@ -2454,9 +2542,11 @@ function confirmSubmitGlobalApproval() {
       frequency:  r.frequency,
       payTerms:   r.payTerms,
       opex:       r.opex,
-      margin:     r.margin,
-      grandOEC:   r.grandOEC,
-      countries:  r.countries,
+      margin:         r.margin,
+      grandOEC:       r.grandOEC,
+      grandTotalPmt:  r.grandTotalPmt,
+      leaseStartDate: leaseStartDate().toISOString().slice(0,10),
+      countries:      r.countries,
     },
   };
 
@@ -3904,11 +3994,13 @@ function submitForApproval() {
 }
 
 function showSubmitModal(r) {
-  const repName = document.getElementById('s-repName')?.value || '';
+  const repName  = document.getElementById('s-repName')?.value || '';
+  const timingStr = r.timing || 'arrears';
+  const schedHTML = paymentScheduleHTML(r.term, r.frequency, timingStr, r.totalPayment, r.currency);
   const overlay = document.createElement('div');
   overlay.className = 'apr-modal-overlay';
   overlay.innerHTML = `
-    <div class="apr-modal">
+    <div class="apr-modal" style="max-width:560px;max-height:88vh;overflow-y:auto">
       <h3>📤 Submit for Approval</h3>
       <div style="font-size:13px;color:#374151;margin-bottom:12px">
         <strong>${r.customer || '(No customer)'}</strong> — ${r.country} — ${pct4(r.lrf)} LRF — OEC ${r.totalOEC.toLocaleString()}
@@ -3917,10 +4009,13 @@ function showSubmitModal(r) {
         <strong>Approval required:</strong><br>
         ${_pendingApprovalLevels.map(a=>`• ${a.level}: ${a.reason}`).join('<br>')}
       </div>
-      <label>Your Name (Submitter)</label>
-      <input id="apr-submitter-name" type="text" placeholder="Enter your name" value="${repName}">
-      <label>Note (optional)</label>
-      <textarea id="apr-submitter-note" placeholder="Context or justification for this request…"></textarea>
+      ${schedHTML}
+      <div style="margin-top:14px">
+        <label>Your Name (Submitter)</label>
+        <input id="apr-submitter-name" type="text" placeholder="Enter your name" value="${repName}">
+        <label>Note (optional)</label>
+        <textarea id="apr-submitter-note" placeholder="Context or justification for this request…"></textarea>
+      </div>
       <div class="apr-modal-btns">
         <button class="btn btn-sm btn-secondary" onclick="this.closest('.apr-modal-overlay').remove()">Cancel</button>
         <button class="btn btn-sm btn-primary" onclick="confirmSubmitApproval()" style="background:#f59e0b;border-color:#d97706">Submit →</button>
@@ -3952,6 +4047,8 @@ function confirmSubmitApproval() {
       customer:      r.customer,
       country:       r.country,
       currency:      r.currency,
+      leaseStartDate: leaseStartDate().toISOString().slice(0,10),
+      totalPayment:  r.totalPayment,
       gcr:           r.gcr,
       term:          r.term,
       frequency:     r.frequency,
@@ -4184,88 +4281,125 @@ async function showDealDetail(reqId) {
   if (!req) return;
   const d = req.deal || {};
   const isGlobal = req.dealType === 'global';
+  const fmtAmt = v => (v||0).toLocaleString(undefined, {minimumFractionDigits:2,maximumFractionDigits:2});
 
-  // Build deal detail rows
+  // ── Deal parameters ──────────────────────────────────────────
   let detailHTML = '';
   if (isGlobal) {
+    const perCountryRows = (d.countries||[]).map(c => {
+      const oec   = (c.assets||[]).reduce((s,a)=>s+(a.qty||0)*(a.price||0),0);
+      const types = [...new Set((c.assets||[]).map(a=>a.assetType||'').filter(Boolean))].join(', ');
+      return `<tr style="border-bottom:1px solid #f1f5f9">
+        <td style="padding:5px 8px;font-weight:600">${c.country}</td>
+        <td style="padding:5px 8px;color:#6b7280">${c.fundingClass||'–'}</td>
+        <td style="padding:5px 8px;text-align:right">${oec.toLocaleString()}</td>
+        <td style="padding:5px 8px;text-align:right">${c.totalPmt ? fmtAmt(c.totalPmt) : '–'}</td>
+        <td style="padding:5px 8px;color:#374151;font-size:11px">${types||'–'}</td>
+      </tr>` +
+      // per-country asset sub-rows
+      (c.assets||[]).map(a => {
+        const aOEC = (a.qty||0)*(a.price||0);
+        return aOEC > 0 ? `<tr style="background:#f8fafc;border-bottom:1px solid #f1f5f9">
+          <td style="padding:3px 8px 3px 20px;color:#6b7280;font-size:11px" colspan="2">↳ ${a.assetType||'–'} (${a.oem||'–'})</td>
+          <td style="padding:3px 8px;text-align:right;font-size:11px;color:#374151">${aOEC.toLocaleString()}</td>
+          <td style="padding:3px 8px;font-size:11px;color:#374151">Qty ${a.qty} × ${(a.price||0).toLocaleString()}</td>
+          <td style="padding:3px 8px;font-size:11px;color:#6b7280">${a.subsidyPct ? `Subsidy ${a.subsidyPct}%` : ''}${a.nonStdRV !== '' && a.nonStdRV != null ? ` RV ${a.nonStdRV}%` : ''}</td>
+        </tr>` : '';
+      }).join('');
+    }).join('');
+
+    const schedHTML = d.totalPayment || d.grandTotalPmt
+      ? paymentScheduleHTML(d.term, d.frequency, d.timing || 'arrears', d.grandTotalPmt || d.totalPayment)
+      : '';
+
     detailHTML = `
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
-        <div class="result-box"><div class="label">Customer</div><div class="value" style="font-size:13px">${d.customer||'–'}</div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px">
         <div class="result-box"><div class="label">Term</div><div class="value" style="font-size:13px">${d.term||'–'}mo ${d.frequency||''}</div></div>
         <div class="result-box"><div class="label">Pay Terms</div><div class="value" style="font-size:13px">Net ${d.payTerms||'–'}</div></div>
         <div class="result-box"><div class="label">Total OEC</div><div class="value" style="font-size:13px">${(d.grandOEC||0).toLocaleString()}</div></div>
+        <div class="result-box"><div class="label">Total Pmt/Period</div><div class="value" style="font-size:13px">${d.grandTotalPmt ? fmtAmt(d.grandTotalPmt) : '–'}</div></div>
         <div class="result-box"><div class="label">LGFS Opex</div><div class="value" style="font-size:13px">${pct4(d.opex)}</div></div>
         <div class="result-box"><div class="label">LGFS Margin</div><div class="value" style="font-size:13px">${pct4(d.margin)}</div></div>
       </div>
-      ${(d.countries||[]).length ? `
-      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px">
-        <thead><tr style="background:#f1f5f9">
-          <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0">Country</th>
-          <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0">Class</th>
-          <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #e2e8f0">OEC</th>
-          <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0">Assets</th>
-        </tr></thead>
-        <tbody>${(d.countries||[]).map(c=>{
-          const oec = (c.assets||[]).reduce((s,a)=>s+(a.qty||0)*(a.price||0),0);
-          const types = [...new Set((c.assets||[]).map(a=>a.assetType||'').filter(Boolean))].join(', ');
-          return `<tr style="border-bottom:1px solid #f1f5f9">
-            <td style="padding:5px 8px;font-weight:600">${c.country}</td>
-            <td style="padding:5px 8px;color:#6b7280">${c.fundingClass||'–'}</td>
-            <td style="padding:5px 8px;text-align:right">${oec.toLocaleString()}</td>
-            <td style="padding:5px 8px;color:#374151">${types||'–'}</td>
-          </tr>`;
-        }).join('')}</tbody>
-      </table>` : ''}`;
+      <div style="font-size:12px;font-weight:600;color:#1e3a8a;margin-bottom:6px">Country & Asset Details</div>
+      <div style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;margin-bottom:14px">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:#f1f5f9">
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0">Country / Asset</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0">Class</th>
+            <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #e2e8f0">OEC</th>
+            <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #e2e8f0">Pmt/Period</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0">Types / Detail</th>
+          </tr></thead>
+          <tbody>${perCountryRows}</tbody>
+        </table>
+      </div>
+      ${schedHTML}`;
   } else {
+    const assetRows = (d.assets||[]).map((a,i) => {
+      const oec = (a.qty||0)*(a.price||0);
+      return `<tr style="${i%2===0?'':'background:#f8fafc'};border-bottom:1px solid #f1f5f9">
+        <td style="padding:5px 8px">${a.assetType||'–'}</td>
+        <td style="padding:5px 8px;color:#6b7280">${a.oem||'–'}</td>
+        <td style="padding:5px 8px;text-align:right">${a.qty||0}</td>
+        <td style="padding:5px 8px;text-align:right">${(a.price||0).toLocaleString()}</td>
+        <td style="padding:5px 8px;text-align:right;font-weight:600">${oec.toLocaleString()}</td>
+        <td style="padding:5px 8px;text-align:right;color:#6b7280">${a.subsidyPct ? a.subsidyPct+'%' : '–'}</td>
+        <td style="padding:5px 8px;text-align:right;color:${a.nonStdRV !== '' && a.nonStdRV != null ? '#92400e' : '#6b7280'}">${a.nonStdRV !== '' && a.nonStdRV != null ? a.nonStdRV+'%' : 'Grid'}</td>
+      </tr>`;
+    }).join('');
+
+    const schedHTML = d.totalPayment
+      ? paymentScheduleHTML(d.term, d.frequency, d.timing || 'arrears', d.totalPayment, d.currency)
+      : '';
+
     detailHTML = `
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
-        <div class="result-box"><div class="label">Customer</div><div class="value" style="font-size:13px">${d.customer||'–'}</div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px">
         <div class="result-box"><div class="label">Country</div><div class="value" style="font-size:13px">${d.country||'–'}${d.currency?' ('+d.currency+')':''}</div></div>
         <div class="result-box"><div class="label">GCR</div><div class="value" style="font-size:13px">${d.gcr||'–'}</div></div>
         <div class="result-box"><div class="label">Term</div><div class="value" style="font-size:13px">${d.term||'–'}mo ${d.frequency||''}</div></div>
         <div class="result-box"><div class="label">Timing</div><div class="value" style="font-size:13px">${d.timing||'–'}</div></div>
         <div class="result-box"><div class="label">Pay Terms</div><div class="value" style="font-size:13px">${d.payTerms!=null?'Net '+d.payTerms:'–'}</div></div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
         <div class="result-box"><div class="label">Total OEC</div><div class="value" style="font-size:13px">${(d.totalOEC||0).toLocaleString()}</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px">
         <div class="result-box"><div class="label">CoF</div><div class="value" style="font-size:13px">${pct4(d.cof)}</div></div>
         <div class="result-box"><div class="label">LRF (Guideline)</div><div class="value" style="font-size:13px">${pct4(d.guidelineLRF||d.lrf)}</div></div>
         <div class="result-box"><div class="label">LRF (Full)</div><div class="value" style="font-size:13px">${pct4(d.lrf)}</div></div>
         <div class="result-box"><div class="label">Full Rate</div><div class="value" style="font-size:13px">${pct4(d.fullRate)}</div></div>
+        <div class="result-box"><div class="label">Pmt / Period</div><div class="value" style="font-size:13px">${d.totalPayment ? fmtAmt(d.totalPayment) : '–'}</div></div>
         <div class="result-box"><div class="label">Avg RV</div><div class="value" style="font-size:13px">${d.avgRV!=null?pct4(d.avgRV):'–'}</div></div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px">
         <div class="result-box"><div class="label">LGFS Opex</div><div class="value" style="font-size:13px">${pct4(d.opex)}</div></div>
         <div class="result-box"><div class="label">LGFS Margin</div><div class="value" style="font-size:13px">${pct4(d.margin)}</div></div>
         <div class="result-box"><div class="label">Commission</div><div class="value" style="font-size:13px">${pct4(d.commission)}</div></div>
-        ${(d.assetTypes||[]).length?`<div class="result-box" style="grid-column:span 2"><div class="label">Asset Types</div><div class="value" style="font-size:12px">${(d.assetTypes||[]).join(', ')}</div></div>`:''}
       </div>
-      ${(d.assets||[]).length ? `
-      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px">
-        <thead><tr style="background:#f1f5f9">
-          <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0">Asset Type</th>
-          <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0">OEM</th>
-          <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #e2e8f0">Qty</th>
-          <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #e2e8f0">Unit Price</th>
-          <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #e2e8f0">OEC</th>
-        </tr></thead>
-        <tbody>${(d.assets||[]).map(a=>`<tr style="border-bottom:1px solid #f1f5f9">
-          <td style="padding:5px 8px">${a.assetType||'–'}</td>
-          <td style="padding:5px 8px;color:#6b7280">${a.oem||'–'}</td>
-          <td style="padding:5px 8px;text-align:right">${a.qty||0}</td>
-          <td style="padding:5px 8px;text-align:right">${(a.price||0).toLocaleString()}</td>
-          <td style="padding:5px 8px;text-align:right;font-weight:600">${((a.qty||0)*(a.price||0)).toLocaleString()}</td>
-        </tr>`).join('')}</tbody>
-      </table>` : ''}`;
+      ${assetRows ? `
+      <div style="font-size:12px;font-weight:600;color:#1e3a8a;margin-bottom:6px">Asset Details</div>
+      <div style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;margin-bottom:14px">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:#f1f5f9">
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0">Asset Type</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0">OEM</th>
+            <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #e2e8f0">Qty</th>
+            <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #e2e8f0">Unit Price</th>
+            <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #e2e8f0">OEC</th>
+            <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #e2e8f0">Subsidy</th>
+            <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #e2e8f0">RV Used</th>
+          </tr></thead>
+          <tbody>${assetRows}</tbody>
+        </table>
+      </div>` : '<div style="font-size:11px;color:#9ca3af;margin-bottom:14px;font-style:italic">Asset details not available (submitted before asset tracking)</div>'}
+      ${schedHTML}`;
   }
 
-  // Approval chain detail
+  // ── Approval chain ───────────────────────────────────────────
   const chainDetail = (req.requiredLevels||[]).map(level => {
     const dec = (req.decisions||[]).find(x=>x.level===level);
     if (dec) {
-      const icon = dec.action === 'approved' ? '✅' : '❌';
       return `<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px">
-        <span>${icon}</span>
+        <span>${dec.action==='approved'?'✅':'❌'}</span>
         <div>
           <div style="font-size:12px;font-weight:600;color:${dec.action==='approved'?'#065f46':'#991b1b'}">${level} — ${dec.action==='approved'?'Approved':'Rejected'}</div>
           <div style="font-size:11px;color:#6b7280">${dec.approver} · ${new Date(dec.timestamp).toLocaleString()}</div>
@@ -4282,8 +4416,8 @@ async function showDealDetail(reqId) {
   const overlay = document.createElement('div');
   overlay.className = 'apr-modal-overlay';
   overlay.innerHTML = `
-    <div class="apr-modal" style="max-width:680px;max-height:85vh;overflow-y:auto">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+    <div class="apr-modal" style="max-width:720px;max-height:88vh;overflow-y:auto">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
         <span class="apr-status ${req.status}">${req.status==='pending'?'⏳ Pending':req.status==='approved'?'✅ Approved':'❌ Rejected'}</span>
         ${isGlobal?`<span style="font-size:10px;background:#dbeafe;color:#1e40af;border-radius:4px;padding:1px 6px;font-weight:600">🌍 Global</span>`:''}
         <span style="font-weight:700;font-size:15px">${d.customer||'(No customer)'}</span>
