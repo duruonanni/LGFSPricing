@@ -3947,18 +3947,28 @@ function confirmSubmitApproval() {
     reasons:        _pendingApprovalLevels.map(a => a.reason),
     chain:          _pendingApprovalLevels.map(a => a.level),  // explicit ordered chain alias
     decisions:   [],
+    dealType: 'single',
     deal: {
-      customer:   r.customer,
-      country:    r.country,
-      gcr:        r.gcr,
-      term:       r.term,
-      frequency:  r.frequency,
-      totalOEC:   r.totalOEC,
-      lrf:        r.lrf,
-      margin:     r.margin,
-      opex:       r.opex,
-      fullRate:   r.fullRate,
-      cof:        r.cof,
+      customer:      r.customer,
+      country:       r.country,
+      currency:      r.currency,
+      gcr:           r.gcr,
+      term:          r.term,
+      frequency:     r.frequency,
+      timing:        r.timing,
+      payTerms:      r.payTerms,
+      totalOEC:      r.totalOEC,
+      lrf:           r.lrf,
+      guidelineLRF:  r.guidelineLRF,
+      margin:        r.margin,
+      opex:          r.opex,
+      commission:    r.commission,
+      fullRate:      r.fullRate,
+      guidelineRate: r.guidelineRate,
+      cof:           r.cof,
+      avgRV:         r.avgRV,
+      assetTypes:    r.assetTypes,
+      assets:        assetRows.filter(a=>(a.qty||0)*(a.price||0)>0).map(a=>({...a})),
     },
   };
 
@@ -4088,8 +4098,17 @@ async function renderApprovalRequests() {
   if (!arr.length) { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
 
+  const role = getCurrentUser()?.role;
+  const uid  = getCurrentUser()?.id;
+  const uname = getCurrentUser()?.name || getCurrentUser()?.email || '';
+
+  // Seller: only own submissions; others: all
+  if (role === 'Seller') {
+    arr = arr.filter(r => r.submitterId === uid || r.submittedBy === uname);
+  }
+
+  // Supabase returns newest-first; apply status filter only
   if (filter !== 'all') arr = arr.filter(r => r.status === filter);
-  arr = arr.slice().reverse(); // newest first
 
   if (!arr.length) {
     list.innerHTML = `<div style="color:var(--gray);font-size:13px;padding:6px 0">No ${filter} requests.</div>`;
@@ -4098,40 +4117,26 @@ async function renderApprovalRequests() {
 
   list.innerHTML = arr.map(req => {
     const d         = req.deal;
-    const role      = getCurrentUser()?.role;
     const nextLevel = getNextLevel(req);
     const canActNow = req.status === 'pending' && (
       role === 'Admin' ||
       (['Pricer','Geo Lead','RV Committee'].includes(role) && role === nextLevel)
     );
 
-    // Chain progress display
-    const chainHTML = (req.requiredLevels || []).map((level, i) => {
-      const dec = (req.decisions || []).find(d => d.level === level);
+    const statusLabel = req.status === 'pending' ? '⏳ Pending' : req.status === 'approved' ? '✅ Approved' : '❌ Rejected';
+
+    // Compact chain summary
+    const chainHTML = (req.requiredLevels || []).map(level => {
+      const dec = (req.decisions || []).find(x => x.level === level);
       if (dec) {
         const icon = dec.action === 'approved' ? '✅' : '❌';
-        return `<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px">
-          <span style="font-size:16px;line-height:1">${icon}</span>
-          <div>
-            <div style="font-size:12px;font-weight:600;color:${dec.action==='approved'?'#065f46':'#991b1b'}">${level} — ${dec.action === 'approved' ? 'Approved' : 'Rejected'}</div>
-            <div style="font-size:11px;color:var(--gray)">${dec.approver} · ${new Date(dec.timestamp).toLocaleString()}</div>
-            ${dec.comment ? `<div style="font-size:11px;color:#374151;font-style:italic">"${dec.comment}"</div>` : ''}
-          </div>
-        </div>`;
+        return `<span style="font-size:11px">${icon} <strong>${level}</strong> — ${dec.approver}${dec.comment ? ` <em style="color:#6b7280">"${dec.comment}"</em>` : ''}</span>`;
       } else if (level === nextLevel && req.status === 'pending') {
-        return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-          <span style="font-size:16px;line-height:1">⏳</span>
-          <div style="font-size:12px;font-weight:600;color:#92400e">${level} — Awaiting approval</div>
-        </div>`;
+        return `<span style="font-size:11px">⏳ <strong>${level}</strong> — Awaiting</span>`;
       } else {
-        return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;opacity:.4">
-          <span style="font-size:16px;line-height:1">○</span>
-          <div style="font-size:12px;color:var(--gray)">${level} — Pending previous step</div>
-        </div>`;
+        return `<span style="font-size:11px;opacity:.45">○ <strong>${level}</strong></span>`;
       }
-    }).join('');
-
-    const statusLabel = req.status === 'pending' ? '⏳ Pending' : req.status === 'approved' ? '✅ Approved' : '❌ Rejected';
+    }).join('<span style="color:#94a3b8;margin:0 4px">→</span>');
 
     const actionsHTML = req.status === 'pending'
       ? `<div class="apr-actions">
@@ -4147,49 +4152,157 @@ async function renderApprovalRequests() {
              style="margin-left:auto;color:var(--gray)">Remove</button>
          </div>`
       : `<div class="apr-actions">
-           ${req.status === 'approved' && role === 'Seller' ? `
-           <button class="btn btn-sm btn-primary" onclick="generateQuote()" style="background:var(--green);border-color:#059669">
-             📄 Save as PDF Quote
-           </button>` : ''}
            <button class="btn btn-sm btn-secondary" onclick="deleteApprovalRequest('${req.id}')"
              style="color:var(--gray);font-size:11px;margin-left:auto">Remove</button>
          </div>`;
 
     return `
-      <div class="apr-card ${req.status}">
-        <div class="apr-header">
+      <div class="apr-card ${req.status}" style="cursor:default">
+        <div class="apr-header" style="cursor:pointer" onclick="showDealDetail('${req.id}')" title="Click to view full details">
           <span class="apr-status ${req.status}">${statusLabel}</span>
           ${req.dealType === 'global' ? `<span style="font-size:10px;background:#dbeafe;color:#1e40af;border-radius:4px;padding:1px 6px;font-weight:600">🌍 Global</span>` : ''}
           <span style="font-weight:700;font-size:13px">${d.customer || '(No customer)'}</span>
-          <span class="apr-meta">Submitted by <strong>${req.submittedBy}</strong> · ${new Date(req.submittedAt).toLocaleString()}</span>
+          ${req.dealType === 'global'
+            ? `<span style="font-size:12px;color:#374151">${(d.countries||[]).map(c=>c.country).join(', ') || '–'} · ${d.term}mo · OEC ${(d.grandOEC||0).toLocaleString()}</span>`
+            : `<span style="font-size:12px;color:#374151">${d.country||''} · ${d.term}mo · LRF ${pct4(d.lrf)}</span>`}
+          <span class="apr-meta" style="margin-left:auto">${req.submittedBy} · ${new Date(req.submittedAt).toLocaleString()}</span>
+          <span style="font-size:11px;color:#93c5fd;margin-left:4px">🔍 Details</span>
         </div>
-        <div class="apr-deal">
-          ${req.dealType === 'global' ? `
-          <div class="apr-deal-item" style="grid-column:span 2"><div class="adl">Countries</div><div class="adv">${(d.countries||[]).map(c=>c.country).join(', ') || '–'}</div></div>
-          <div class="apr-deal-item"><div class="adl">Term</div><div class="adv">${d.term}mo ${d.frequency}</div></div>
-          <div class="apr-deal-item"><div class="adl">Total OEC</div><div class="adv">${(d.grandOEC||0).toLocaleString()}</div></div>
-          <div class="apr-deal-item"><div class="adl">Margin</div><div class="adv">${pct4(d.margin)}</div></div>
-          <div class="apr-deal-item"><div class="adl">Opex</div><div class="adv">${pct4(d.opex)}</div></div>
-          ` : `
-          <div class="apr-deal-item"><div class="adl">Country</div><div class="adv">${d.country}</div></div>
-          <div class="apr-deal-item"><div class="adl">GCR</div><div class="adv">${d.gcr}</div></div>
-          <div class="apr-deal-item"><div class="adl">Term</div><div class="adv">${d.term}mo ${d.frequency}</div></div>
-          <div class="apr-deal-item"><div class="adl">OEC</div><div class="adv">${(d.totalOEC||0).toLocaleString()}</div></div>
-          <div class="apr-deal-item"><div class="adl">LRF</div><div class="adv">${pct4(d.lrf)}</div></div>
-          <div class="apr-deal-item"><div class="adl">Margin</div><div class="adv">${pct4(d.margin)}</div></div>
-          <div class="apr-deal-item"><div class="adl">Opex</div><div class="adv">${pct4(d.opex)}</div></div>
-          <div class="apr-deal-item"><div class="adl">Full Rate</div><div class="adv">${pct4(d.fullRate)}</div></div>
-          `}
+        <div style="padding:6px 0 4px;display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+          ${chainHTML}
         </div>
-        <div class="apr-reasons" style="margin-bottom:10px">
-          <strong>Approval reasons:</strong><br>
-          <span style="color:#78350f">${(req.reasons||[]).map(r=>'• '+r).join('<br>')}</span>
-          ${req.note ? `<br><em style="color:#374151;font-size:12px">"${req.note}"</em>` : ''}
-        </div>
-        <div style="margin-bottom:6px">${chainHTML}</div>
+        ${req.note ? `<div style="font-size:11px;color:#374151;font-style:italic;padding:2px 0 6px">"${req.note}"</div>` : ''}
         ${actionsHTML}
       </div>`;
   }).join('');
+}
+
+// ── Deal detail modal ─────────────────────────────────────────
+async function showDealDetail(reqId) {
+  const allReqs = await sbLoadApprovals();
+  const req = allReqs.find(r => r.id === reqId) || loadApprovalRequests().find(r => r.id === reqId);
+  if (!req) return;
+  const d = req.deal || {};
+  const isGlobal = req.dealType === 'global';
+
+  // Build deal detail rows
+  let detailHTML = '';
+  if (isGlobal) {
+    detailHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
+        <div class="result-box"><div class="label">Customer</div><div class="value" style="font-size:13px">${d.customer||'–'}</div></div>
+        <div class="result-box"><div class="label">Term</div><div class="value" style="font-size:13px">${d.term||'–'}mo ${d.frequency||''}</div></div>
+        <div class="result-box"><div class="label">Pay Terms</div><div class="value" style="font-size:13px">Net ${d.payTerms||'–'}</div></div>
+        <div class="result-box"><div class="label">Total OEC</div><div class="value" style="font-size:13px">${(d.grandOEC||0).toLocaleString()}</div></div>
+        <div class="result-box"><div class="label">LGFS Opex</div><div class="value" style="font-size:13px">${pct4(d.opex)}</div></div>
+        <div class="result-box"><div class="label">LGFS Margin</div><div class="value" style="font-size:13px">${pct4(d.margin)}</div></div>
+      </div>
+      ${(d.countries||[]).length ? `
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px">
+        <thead><tr style="background:#f1f5f9">
+          <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0">Country</th>
+          <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0">Class</th>
+          <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #e2e8f0">OEC</th>
+          <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0">Assets</th>
+        </tr></thead>
+        <tbody>${(d.countries||[]).map(c=>{
+          const oec = (c.assets||[]).reduce((s,a)=>s+(a.qty||0)*(a.price||0),0);
+          const types = [...new Set((c.assets||[]).map(a=>a.assetType||'').filter(Boolean))].join(', ');
+          return `<tr style="border-bottom:1px solid #f1f5f9">
+            <td style="padding:5px 8px;font-weight:600">${c.country}</td>
+            <td style="padding:5px 8px;color:#6b7280">${c.fundingClass||'–'}</td>
+            <td style="padding:5px 8px;text-align:right">${oec.toLocaleString()}</td>
+            <td style="padding:5px 8px;color:#374151">${types||'–'}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>` : ''}`;
+  } else {
+    detailHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
+        <div class="result-box"><div class="label">Customer</div><div class="value" style="font-size:13px">${d.customer||'–'}</div></div>
+        <div class="result-box"><div class="label">Country</div><div class="value" style="font-size:13px">${d.country||'–'}${d.currency?' ('+d.currency+')':''}</div></div>
+        <div class="result-box"><div class="label">GCR</div><div class="value" style="font-size:13px">${d.gcr||'–'}</div></div>
+        <div class="result-box"><div class="label">Term</div><div class="value" style="font-size:13px">${d.term||'–'}mo ${d.frequency||''}</div></div>
+        <div class="result-box"><div class="label">Timing</div><div class="value" style="font-size:13px">${d.timing||'–'}</div></div>
+        <div class="result-box"><div class="label">Pay Terms</div><div class="value" style="font-size:13px">${d.payTerms!=null?'Net '+d.payTerms:'–'}</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
+        <div class="result-box"><div class="label">Total OEC</div><div class="value" style="font-size:13px">${(d.totalOEC||0).toLocaleString()}</div></div>
+        <div class="result-box"><div class="label">CoF</div><div class="value" style="font-size:13px">${pct4(d.cof)}</div></div>
+        <div class="result-box"><div class="label">LRF (Guideline)</div><div class="value" style="font-size:13px">${pct4(d.guidelineLRF||d.lrf)}</div></div>
+        <div class="result-box"><div class="label">LRF (Full)</div><div class="value" style="font-size:13px">${pct4(d.lrf)}</div></div>
+        <div class="result-box"><div class="label">Full Rate</div><div class="value" style="font-size:13px">${pct4(d.fullRate)}</div></div>
+        <div class="result-box"><div class="label">Avg RV</div><div class="value" style="font-size:13px">${d.avgRV!=null?pct4(d.avgRV):'–'}</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px">
+        <div class="result-box"><div class="label">LGFS Opex</div><div class="value" style="font-size:13px">${pct4(d.opex)}</div></div>
+        <div class="result-box"><div class="label">LGFS Margin</div><div class="value" style="font-size:13px">${pct4(d.margin)}</div></div>
+        <div class="result-box"><div class="label">Commission</div><div class="value" style="font-size:13px">${pct4(d.commission)}</div></div>
+        ${(d.assetTypes||[]).length?`<div class="result-box" style="grid-column:span 2"><div class="label">Asset Types</div><div class="value" style="font-size:12px">${(d.assetTypes||[]).join(', ')}</div></div>`:''}
+      </div>
+      ${(d.assets||[]).length ? `
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px">
+        <thead><tr style="background:#f1f5f9">
+          <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0">Asset Type</th>
+          <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #e2e8f0">OEM</th>
+          <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #e2e8f0">Qty</th>
+          <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #e2e8f0">Unit Price</th>
+          <th style="text-align:right;padding:6px 8px;border-bottom:1px solid #e2e8f0">OEC</th>
+        </tr></thead>
+        <tbody>${(d.assets||[]).map(a=>`<tr style="border-bottom:1px solid #f1f5f9">
+          <td style="padding:5px 8px">${a.assetType||'–'}</td>
+          <td style="padding:5px 8px;color:#6b7280">${a.oem||'–'}</td>
+          <td style="padding:5px 8px;text-align:right">${a.qty||0}</td>
+          <td style="padding:5px 8px;text-align:right">${(a.price||0).toLocaleString()}</td>
+          <td style="padding:5px 8px;text-align:right;font-weight:600">${((a.qty||0)*(a.price||0)).toLocaleString()}</td>
+        </tr>`).join('')}</tbody>
+      </table>` : ''}`;
+  }
+
+  // Approval chain detail
+  const chainDetail = (req.requiredLevels||[]).map(level => {
+    const dec = (req.decisions||[]).find(x=>x.level===level);
+    if (dec) {
+      const icon = dec.action === 'approved' ? '✅' : '❌';
+      return `<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px">
+        <span>${icon}</span>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:${dec.action==='approved'?'#065f46':'#991b1b'}">${level} — ${dec.action==='approved'?'Approved':'Rejected'}</div>
+          <div style="font-size:11px;color:#6b7280">${dec.approver} · ${new Date(dec.timestamp).toLocaleString()}</div>
+          ${dec.comment?`<div style="font-size:11px;color:#374151;font-style:italic">"${dec.comment}"</div>`:''}
+        </div>
+      </div>`;
+    }
+    const nextLevel = getNextLevel(req);
+    return level === nextLevel && req.status === 'pending'
+      ? `<div style="font-size:12px;color:#92400e;margin-bottom:4px">⏳ <strong>${level}</strong> — Awaiting approval</div>`
+      : `<div style="font-size:12px;color:#9ca3af;margin-bottom:4px;opacity:.5">○ <strong>${level}</strong></div>`;
+  }).join('');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'apr-modal-overlay';
+  overlay.innerHTML = `
+    <div class="apr-modal" style="max-width:680px;max-height:85vh;overflow-y:auto">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <span class="apr-status ${req.status}">${req.status==='pending'?'⏳ Pending':req.status==='approved'?'✅ Approved':'❌ Rejected'}</span>
+        ${isGlobal?`<span style="font-size:10px;background:#dbeafe;color:#1e40af;border-radius:4px;padding:1px 6px;font-weight:600">🌍 Global</span>`:''}
+        <span style="font-weight:700;font-size:15px">${d.customer||'(No customer)'}</span>
+        <span style="font-size:11px;color:#6b7280;margin-left:auto">Submitted by <strong>${req.submittedBy}</strong> · ${new Date(req.submittedAt).toLocaleString()}</span>
+      </div>
+      ${detailHTML}
+      ${(req.reasons||[]).length?`
+      <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:12px">
+        <strong>Approval reasons:</strong><br>
+        ${(req.reasons||[]).map(r=>`• ${r}`).join('<br>')}
+        ${req.note?`<br><em style="color:#374151">"${req.note}"</em>`:''}
+      </div>`:''}
+      <div style="margin-bottom:16px">${chainDetail}</div>
+      <div style="text-align:right">
+        <button class="btn btn-sm btn-secondary" onclick="this.closest('.apr-modal-overlay').remove()">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
 
 async function deleteApprovalRequest(id) {
